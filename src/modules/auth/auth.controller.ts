@@ -50,6 +50,21 @@ export class AuthController {
 
       const response = await authService.verifyRegisterOtp(name, email, otp);
 
+      // ⭐ SET COOKIES FOR SESSION
+      res.cookie("access_token", response.tokens.accessToken, {
+        httpOnly: true,
+        secure: false, // true in production
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000,
+      });
+
+      res.cookie("refresh_token", response.tokens.refreshToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "strict",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
       return res.status(200).json({
         success: true,
         ...response,
@@ -109,6 +124,21 @@ export class AuthController {
       }
 
       const response = await authService.verifyLoginOtp(email, otp);
+
+      // ⭐ SET COOKIES HERE TOO
+      res.cookie("access_token", response.tokens.accessToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000,
+      });
+
+      res.cookie("refresh_token", response.tokens.refreshToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "strict",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
 
       return res.status(200).json({
         success: true,

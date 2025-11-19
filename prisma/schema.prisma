@@ -86,16 +86,35 @@ model OTP {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String
-  token     String   @unique   // hashed refresh token
+  id        String   @id @default(cuid())
+  token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  userId  String?
+  adminId String?
 
-  @@index([userId])
+  user  User?  @relation(fields: [userId], references: [id])
+  admin Admin? @relation(fields: [adminId], references: [id])
 }
+
+
+
+
+
+model Admin {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String   @unique
+  refreshTokens RefreshToken[] 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+/**
+ * ---------- PATIENT ----------
+ * Unified model — includes all details & recall (meal) data
+ */
 
 
 model Doctor {
@@ -110,21 +129,6 @@ model Doctor {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
-
-model Admin {
-  id        String   @id @default(uuid())
-  name      String
-  phone     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-/**
- * ---------- PATIENT ----------
- * Unified model — includes all details & recall (meal) data
- */
-
 model PatientDetials {
   id     String @id @default(uuid())
   user   User   @relation(fields: [userId], references: [id])

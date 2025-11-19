@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authController } from "./auth.controller";
+import { refreshSession } from "./refresh/auth.refresh";
 
 const authRoutes = Router();
 
@@ -28,5 +29,12 @@ authRoutes.post("/login/send-otp", (req, res) =>
 authRoutes.post("/login/verify-otp", (req, res) =>
   authController.verifyLoginOtp(req, res)
 );
+
+/* 
+--------------------------------------
+refresh routes
+--------------------------------------
+*/
+authRoutes.get("/refresh", refreshSession);
 
 export default authRoutes;

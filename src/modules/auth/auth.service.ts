@@ -5,80 +5,85 @@ import { generateTokenPair } from "./utils/token";
 
 export class AuthService {
   /**
-   * --------------------------
-   * REGISTER → SEND OTP
-   * --------------------------
+   * -----------------------------------------
+   * SHARED: Resolve account owner (USER / ADMIN)
+   * -----------------------------------------
    */
-  async sendRegisterOtp(name: string, email: string) {
-    // check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-    if (existingUser) {
-      throw new Error("User already exists with this email.");
-    }
+  private async findOwnerByEmail(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    const admin = await prisma.admin.findUnique({ where: { email } });
 
-    // create OTP
+    if (user) return { id: user.id, role: "USER" as const };
+    if (admin) return { id: admin.id, role: "ADMIN" as const };
+
+    return null;
+  }
+
+  /**
+   * -----------------------------------------
+   * SHARED: Create & store OTP
+   * -----------------------------------------
+   */
+  private async createOtp(email: string) {
     const otp = crypto.randomInt(1000, 9999).toString();
     const hashed = await hashOtp(otp);
 
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
-    // store OTP
     await prisma.oTP.create({
-      data: {
-        email,
-        code: hashed,
-        expiresAt,
-      },
+      data: { email, code: hashed, expiresAt },
     });
 
-    // send OTP (currently mock)
-    console.log("REGISTER OTP:", otp);
+    console.log(`OTP : `, otp); // TODO: Replace with real email/SMS
+
+    return otp;
+  }
+
+  /**
+   * -----------------------------------------
+   * REGISTER → SEND OTP
+   * -----------------------------------------
+   */
+  async sendRegisterOtp(name: string, email: string) {
+    const existingOwner = await this.findOwnerByEmail(email);
+    if (existingOwner)
+      throw new Error("Account already exists with this email.");
+
+    await this.createOtp(email);
 
     return { message: "OTP sent successfully." };
   }
 
   /**
-   * --------------------------
+   * -----------------------------------------
    * REGISTER → VERIFY OTP
-   * --------------------------
+   * -----------------------------------------
    */
   async verifyRegisterOtp(name: string, email: string, otp: string) {
-    // find OTP
+    const existingOwner = await this.findOwnerByEmail(email);
+    if (existingOwner) throw new Error("Account already exists.");
+
+    // get latest OTP
     const foundOtp = await prisma.oTP.findFirst({
-      where: {
-        email,
-      },
+      where: { email },
       orderBy: { createdAt: "desc" },
     });
 
-    if (!foundOtp) throw new Error("OTP not found. Request again.");
+    if (!foundOtp) throw new Error("OTP not found.");
+    if (isOtpExpired(foundOtp.expiresAt)) throw new Error("OTP expired.");
 
-    // check expired
-    if (isOtpExpired(foundOtp.expiresAt)) {
-      throw new Error("OTP expired. Request a new one.");
-    }
-
-    // validate OTP
     const match = await validateOtp(otp, foundOtp.code);
     if (!match) throw new Error("Invalid OTP.");
 
-    // delete OTP after verifying
-    await prisma.oTP.delete({
-      where: { id: foundOtp.id },
-    });
+    await prisma.oTP.delete({ where: { id: foundOtp.id } });
 
-    // create user
+    // CREATE USER
     const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-      },
+      data: { name, email },
     });
 
-    // generate tokens
-    const tokens = await generateTokenPair(user.id, user.role);
+    // Generate tokens
+    const tokens = await generateTokenPair(user.id, "USER");
 
     return {
       message: "User registered successfully.",
@@ -88,70 +93,52 @@ export class AuthService {
   }
 
   /**
-   * --------------------------
-   * LOGIN → SEND OTP
-   * --------------------------
+   * -----------------------------------------
+   * LOGIN → SEND OTP (USER + ADMIN)
+   * -----------------------------------------
    */
   async sendLoginOtp(email: string) {
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const owner = await this.findOwnerByEmail(email);
+    if (!owner) throw new Error("No account found with this email.");
 
-    if (!user) throw new Error("No account found with this email.");
+    await this.createOtp(email);
 
-    // create OTP
-    const otp = crypto.randomInt(1000, 9999).toString();
-    const hashed = await hashOtp(otp);
-
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    await prisma.oTP.create({
-      data: {
-        email,
-        code: hashed,
-        expiresAt,
-      },
-    });
-
-    console.log("LOGIN OTP:", otp);
-
-    return { message: "OTP sent successfully." };
+    return {
+      message: "OTP sent successfully.",
+      role: owner.role,
+    };
   }
 
   /**
-   * --------------------------
-   * LOGIN → VERIFY OTP
-   * --------------------------
+   * -----------------------------------------
+   * LOGIN → VERIFY OTP (USER + ADMIN)
+   * -----------------------------------------
    */
   async verifyLoginOtp(email: string, otp: string) {
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const owner = await this.findOwnerByEmail(email);
+    if (!owner) throw new Error("No account found.");
 
-    if (!user) throw new Error("No account found.");
-
-    // find latest OTP
+    // fetch latest OTP
     const foundOtp = await prisma.oTP.findFirst({
       where: { email },
       orderBy: { createdAt: "desc" },
     });
 
-    if (!foundOtp) throw new Error("OTP not found. Request again.");
-
+    if (!foundOtp) throw new Error("OTP not found.");
     if (isOtpExpired(foundOtp.expiresAt)) throw new Error("OTP expired.");
 
     const match = await validateOtp(otp, foundOtp.code);
     if (!match) throw new Error("Invalid OTP.");
 
-    // delete OTP
     await prisma.oTP.delete({ where: { id: foundOtp.id } });
 
-    // generate tokens
-    const tokens = await generateTokenPair(user.id, user.role);
+    // generate token pair (role-aware)
+    const tokens = await generateTokenPair(owner.id, owner.role);
 
     return {
       message: "Logged in successfully.",
-      user,
+      role: owner.role,
+      owner,
       tokens,
     };
   }
