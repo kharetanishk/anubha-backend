@@ -2,11 +2,6 @@ import { Request, Response } from "express";
 import { authService } from "./auth.service";
 
 export class AuthController {
-  /**
-   * ---------------------------------------
-   * REGISTER → SEND OTP
-   * ---------------------------------------
-   */
   async sendRegisterOtp(req: Request, res: Response) {
     try {
       const { name, email } = req.body;
@@ -32,11 +27,6 @@ export class AuthController {
     }
   }
 
-  /**
-   * ---------------------------------------
-   * REGISTER → VERIFY OTP
-   * ---------------------------------------
-   */
   async verifyRegisterOtp(req: Request, res: Response) {
     try {
       const { name, email, otp } = req.body;
@@ -50,10 +40,9 @@ export class AuthController {
 
       const response = await authService.verifyRegisterOtp(name, email, otp);
 
-      // ⭐ SET COOKIES FOR SESSION
       res.cookie("access_token", response.tokens.accessToken, {
         httpOnly: true,
-        secure: false, // true in production
+        secure: false,
         sameSite: "strict",
         maxAge: 15 * 60 * 1000,
       });
@@ -77,11 +66,6 @@ export class AuthController {
     }
   }
 
-  /**
-   * ---------------------------------------
-   * LOGIN → SEND OTP
-   * ---------------------------------------
-   */
   async sendLoginOtp(req: Request, res: Response) {
     try {
       const { email } = req.body;
@@ -106,12 +90,6 @@ export class AuthController {
       });
     }
   }
-
-  /**
-   * ---------------------------------------
-   * LOGIN → VERIFY OTP
-   * ---------------------------------------
-   */
   async verifyLoginOtp(req: Request, res: Response) {
     try {
       const { email, otp } = req.body;
@@ -125,7 +103,6 @@ export class AuthController {
 
       const response = await authService.verifyLoginOtp(email, otp);
 
-      // ⭐ SET COOKIES HERE TOO
       res.cookie("access_token", response.tokens.accessToken, {
         httpOnly: true,
         secure: false,

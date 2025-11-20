@@ -11,7 +11,6 @@ export const logout = async (req: Request, res: Response) => {
       });
     }
 
-    // Clear cookies
     res.clearCookie("access_token", {
       httpOnly: true,
       secure: true,

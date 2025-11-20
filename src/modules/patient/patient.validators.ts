@@ -15,7 +15,6 @@ export const BowelMovementEnum = z.enum([
 ]);
 
 export const createPatientSchema = z.object({
-  /* ---------------- PERSONAL DETAILS ---------------- */
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
 
   phone: z
@@ -41,7 +40,6 @@ export const createPatientSchema = z.object({
 
   address: z.string().min(5, "Address is too short"),
 
-  /* ---------------- MEASUREMENTS ---------------- */
   weight: z
     .union([z.string(), z.number()])
     .transform(Number)
@@ -67,12 +65,10 @@ export const createPatientSchema = z.object({
     .transform(Number)
     .refine((n) => !isNaN(n) && n > 0, "Hip must be positive"),
 
-  /* ---------------- MEDICAL ---------------- */
   medicalHistory: z.string().optional(),
   fileIds: z.array(z.string().uuid()).optional(),
   appointmentConcerns: z.string().optional(),
 
-  /* ---------------- LIFESTYLE ---------------- */
   bowelMovement: BowelMovementEnum,
 
   dailyFoodIntake: z.string().optional(),

@@ -1,4 +1,3 @@
-// modules/patient/patient.service.ts
 import prisma from "../../database/prismaclient";
 import { CreatePatientInput } from "./patient.validators";
 import { deleteFromCloudinary } from "../../util/cloudinary";
@@ -8,12 +7,8 @@ export class PatientService {
     userId: string,
     data: CreatePatientInput & { fileIds?: string[] }
   ) {
-    const {
-      fileIds = [], // 🟢 new field (array of file IDs)
-      ...rest
-    } = data;
+    const { fileIds = [], ...rest } = data;
 
-    // 1) Create patient first
     const patient = await prisma.patientDetials.create({
       data: {
         userId,
@@ -22,7 +17,6 @@ export class PatientService {
       },
     });
 
-    // 2) Attach uploaded files to this patient
     if (fileIds.length > 0) {
       await prisma.file.updateMany({
         where: { id: { in: fileIds } },
@@ -63,7 +57,6 @@ export class PatientService {
     patientId: string,
     data: Partial<CreatePatientInput>
   ) {
-    // Only allow specific fields to be updated
     const updateData: any = { ...data };
     if (updateData.dateOfBirth) {
       updateData.dateOfBirth = new Date(updateData.dateOfBirth);
@@ -98,7 +91,6 @@ export class PatientService {
       return { success: true, code: 200, message: "Temporary file deleted" };
     }
 
-    // AUTHORIZATION
     const isOwner = patient.userId === requester.id;
     const isAdmin = requester.role === "ADMIN";
 
@@ -110,13 +102,11 @@ export class PatientService {
       };
     }
 
-    // DELETE FROM CLOUDINARY (using stored publicId)
     console.log(file.publicId);
     if (file.publicId) {
       await deleteFromCloudinary(file.publicId);
     }
 
-    // DELETE FROM DB
     await prisma.file.delete({ where: { id: fileId } });
 
     return {

@@ -16,7 +16,6 @@ export async function requireAuth(
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    // 1️⃣ Try Access Token first
     try {
       const decoded = jwt.verify(
         accessToken,
@@ -25,11 +24,8 @@ export async function requireAuth(
 
       req.user = { id: decoded.id, role: decoded.role };
       return next();
-    } catch {
-      // access token expired -> fallback to refresh token
-    }
+    } catch {}
 
-    // 2️⃣ No refresh token = session dead
     if (!refreshToken) {
       return res
         .status(401)
@@ -45,9 +41,6 @@ export async function requireAuth(
       return res.status(401).json({ message: "Session expired. Login again." });
     }
 
-    // ——————————————————
-    // 3️⃣ Determine OWNER of refresh token
-    // ——————————————————
     let owner: { id: string; role: "USER" | "ADMIN" } | null = null;
 
     if (storedToken.user) {
@@ -58,9 +51,6 @@ export async function requireAuth(
       return res.status(401).json({ message: "Invalid session token" });
     }
 
-    // ——————————————————
-    // 4️⃣ Issue NEW access token
-    // ——————————————————
     const newAccessToken = generateAccessToken({
       id: owner.id,
       role: owner.role,

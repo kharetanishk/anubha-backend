@@ -4,12 +4,9 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url = env("DATABASE_URL")
 }
 
-/**
- * ---------- ENUMS ----------
- */
 enum Role {
   USER
   ADMIN
@@ -60,28 +57,33 @@ enum BowelMovement {
   IRREGULAR
 }
 
-/**
- * ---------- MODELS ----------
- */
-
+enum MealType {
+  PRE_WAKEUP
+  BREAKFAST
+  MID_MEAL
+  LUNCH
+  MID_EVENING
+  DINNER
+  OTHER
+}
 
 model User {
-  id           String        @id @default(uuid())
-  name         String
-  email         String       @unique
+  id            String           @id @default(uuid())
+  name          String
+  email         String           @unique
   // phone        String        @unique
-  role          Role         @default(USER)
+  role          Role             @default(USER)
   patients      PatientDetials[]
   appointments  Appointment[]
-  refreshTokens RefreshToken[] 
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  refreshTokens RefreshToken[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }
 
 model OTP {
   id        String   @id @default(uuid())
   email     String
-  code      String          // hashed OTP
+  code      String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
@@ -101,66 +103,82 @@ model RefreshToken {
   admin Admin? @relation(fields: [adminId], references: [id])
 }
 
-
-
-
-
 model Admin {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  phone     String   @unique
-  refreshTokens RefreshToken[] 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  phone         String         @unique
+  refreshTokens RefreshToken[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
-/**
- * ---------- PATIENT ----------
- * Unified model — includes all details & recall (meal) data
- */
 
 model PatientDetials {
-  id     String @id @default(uuid())
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
-  /*** Step 1 — Personal Details ***/
-  name         String
-  phone        String
-  gender       Gender
-  email        String
-  dateOfBirth  DateTime
-  age          Int
-  address      String
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  name        String
+  phone       String
+  gender      Gender
+  email       String
+  dateOfBirth DateTime
+  age         Int
+  address     String
 
-  /*** Step 2 — Body Measurements ***/
+  /**
+   * * Step 2 — Body Measurements **
+   */
   weight Float
   height Float
   neck   Float
   waist  Float
   hip    Float
 
-  /*** Step 3 — Medical & Reports ***/
   medicalHistory      String?
   appointmentConcerns String?
   files               File[]
 
-  /*** Step 4 — Lifestyle & Habits ***/
-  bowelMovement     BowelMovement
-  dailyFoodIntake   String?
-  dailyWaterIntake  Int
-  wakeUpTime        String
-  sleepTime         String
-  sleepQuality      SleepQuality
+  bowelMovement    BowelMovement
+  dailyFoodIntake  String?
+  dailyWaterIntake Int
+  wakeUpTime       String
+  sleepTime        String
+  sleepQuality     SleepQuality
 
-  /*** Relations ***/
+  recalls      Recall[]      @relation("PatientRecalls")
   appointments Appointment[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
-/**
- * ---------- CORE BOOKING MODELS ----------
- */
+model Recall {
+  id        String         @id @default(uuid())
+  patient   PatientDetials @relation("PatientRecalls", fields: [patientId], references: [id])
+  patientId String
+
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  appointmentId String?      @unique
+
+  notes   String? // universal notes
+  entries RecallEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RecallEntry {
+  id       String @id @default(uuid())
+  recall   Recall @relation(fields: [recallId], references: [id])
+  recallId String
+
+  mealType MealType
+  time     String
+  foodItem String
+  quantity String
+  notes    String?
+
+  createdAt DateTime @default(now())
+}
 
 model Slot {
   id          String       @id @default(uuid())
@@ -187,7 +205,7 @@ model Appointment {
   userId       String
   doctor       Doctor            @relation(fields: [doctorId], references: [id])
   doctorId     String
-  patient      PatientDetials           @relation(fields: [patientId], references: [id])
+  patient      PatientDetials    @relation(fields: [patientId], references: [id])
   patientId    String
   slot         Slot?             @relation(fields: [slotId], references: [id])
   slotId       String?           @unique
@@ -196,6 +214,7 @@ model Appointment {
   meetingUrl   String?
   notes        String?
   reminderSent Boolean           @default(false)
+  recall       Recall?
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
@@ -203,24 +222,19 @@ model Appointment {
   @@index([doctorId, startAt])
 }
 
-/**
- * ---------- FILE UPLOADS ----------
- */
-
 model File {
   id          String          @id @default(uuid())
   url         String
-  publicId    String 
+  publicId    String
   fileName    String
   mimeType    String
   sizeInBytes Int
   provider    StorageProvider @default(CLOUDINARY)
-  patient     PatientDetials?         @relation(fields: [patientId], references: [id])
+  patient     PatientDetials? @relation(fields: [patientId], references: [id])
   patientId   String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 }
-
 
 model Doctor {
   id             String        @id @default(uuid())

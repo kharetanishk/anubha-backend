@@ -39,11 +39,11 @@ export const uploadImageToCloudinary = async (req: Request, res: Response) => {
           fileName: file.originalname,
           mimeType: file.mimetype,
           sizeInBytes: file.size,
-          patientId: null, // 🟢 CORRECT
+          patientId: null,
         },
       });
 
-      uploadedFiles.push(saved); // includes saved.id
+      uploadedFiles.push(saved);
     }
 
     res.status(200).json({

@@ -4,11 +4,6 @@ import { hashOtp, validateOtp, isOtpExpired } from "./utils/validateOtp";
 import { generateTokenPair } from "./utils/token";
 
 export class AuthService {
-  /**
-   * -----------------------------------------
-   * SHARED: Resolve account owner (USER / ADMIN)
-   * -----------------------------------------
-   */
   private async findOwnerByEmail(email: string) {
     const user = await prisma.user.findUnique({ where: { email } });
     const admin = await prisma.admin.findUnique({ where: { email } });
@@ -19,11 +14,6 @@ export class AuthService {
     return null;
   }
 
-  /**
-   * -----------------------------------------
-   * SHARED: Create & store OTP
-   * -----------------------------------------
-   */
   private async createOtp(email: string) {
     const otp = crypto.randomInt(1000, 9999).toString();
     const hashed = await hashOtp(otp);
@@ -34,16 +24,11 @@ export class AuthService {
       data: { email, code: hashed, expiresAt },
     });
 
-    console.log(`OTP : `, otp); // TODO: Replace with real email/SMS
+    console.log(`OTP : `, otp);
 
     return otp;
   }
 
-  /**
-   * -----------------------------------------
-   * REGISTER → SEND OTP
-   * -----------------------------------------
-   */
   async sendRegisterOtp(name: string, email: string) {
     const existingOwner = await this.findOwnerByEmail(email);
     if (existingOwner)
@@ -54,16 +39,10 @@ export class AuthService {
     return { message: "OTP sent successfully." };
   }
 
-  /**
-   * -----------------------------------------
-   * REGISTER → VERIFY OTP
-   * -----------------------------------------
-   */
   async verifyRegisterOtp(name: string, email: string, otp: string) {
     const existingOwner = await this.findOwnerByEmail(email);
     if (existingOwner) throw new Error("Account already exists.");
 
-    // get latest OTP
     const foundOtp = await prisma.oTP.findFirst({
       where: { email },
       orderBy: { createdAt: "desc" },
@@ -77,12 +56,9 @@ export class AuthService {
 
     await prisma.oTP.delete({ where: { id: foundOtp.id } });
 
-    // CREATE USER
     const user = await prisma.user.create({
       data: { name, email },
     });
-
-    // Generate tokens
     const tokens = await generateTokenPair(user.id, "USER");
 
     return {
@@ -92,11 +68,6 @@ export class AuthService {
     };
   }
 
-  /**
-   * -----------------------------------------
-   * LOGIN → SEND OTP (USER + ADMIN)
-   * -----------------------------------------
-   */
   async sendLoginOtp(email: string) {
     const owner = await this.findOwnerByEmail(email);
     if (!owner) throw new Error("No account found with this email.");
@@ -109,16 +80,10 @@ export class AuthService {
     };
   }
 
-  /**
-   * -----------------------------------------
-   * LOGIN → VERIFY OTP (USER + ADMIN)
-   * -----------------------------------------
-   */
   async verifyLoginOtp(email: string, otp: string) {
     const owner = await this.findOwnerByEmail(email);
     if (!owner) throw new Error("No account found.");
 
-    // fetch latest OTP
     const foundOtp = await prisma.oTP.findFirst({
       where: { email },
       orderBy: { createdAt: "desc" },
@@ -132,7 +97,6 @@ export class AuthService {
 
     await prisma.oTP.delete({ where: { id: foundOtp.id } });
 
-    // generate token pair (role-aware)
     const tokens = await generateTokenPair(owner.id, owner.role);
 
     return {

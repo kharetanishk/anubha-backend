@@ -16,6 +16,6 @@ export const validateBody =
       });
     }
 
-    req.body = parsed.data; // sanitized + typed
+    req.body = parsed.data;
     next();
   };
