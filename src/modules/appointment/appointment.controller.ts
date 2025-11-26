@@ -25,7 +25,6 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       appointmentMode,
     } = req.body;
 
-    // Validation
     if (!patientId || !slotId) {
       return res.status(400).json({
         success: false,
@@ -33,7 +32,6 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       });
     }
 
-    // 1️⃣ Fetch slot
     const slot = await prisma.slot.findUnique({
       where: { id: slotId },
     });
@@ -52,10 +50,8 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       });
     }
 
-    // 2️⃣ Fetch doctorId (Admin = Doctor)
     const doctorId = await getSingleDoctorId();
 
-    // 3️⃣ Create appointment
     const appointment = await prisma.appointment.create({
       data: {
         userId,
@@ -76,7 +72,6 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       },
     });
 
-    // 4️⃣ Mark slot booked
     await prisma.slot.update({
       where: { id: slotId },
       data: { isBooked: true },
@@ -108,7 +103,6 @@ export async function adminUpdateAppointmentStatus(
       return res.status(400).json({ error: "Missing status" });
     }
 
-    // Fetch appointment
     const appointment = await prisma.appointment.findUnique({
       where: { id },
       include: { slot: true },
@@ -118,7 +112,6 @@ export async function adminUpdateAppointmentStatus(
       return res.status(404).json({ error: "Appointment not found" });
     }
 
-    // ✋ Prevent illegal transitions
     const current = appointment.status;
 
     if (current === "CANCELLED" || current === "COMPLETED") {
@@ -127,7 +120,6 @@ export async function adminUpdateAppointmentStatus(
       });
     }
 
-    // VALID transitions:
     const allowedStatuses: AppointmentStatus[] = [
       "PENDING",
       "CONFIRMED",
@@ -139,8 +131,6 @@ export async function adminUpdateAppointmentStatus(
       return res.status(400).json({ error: "Invalid status" });
     }
 
-    // SPECIAL LOGIC:
-    // If cancelled → free the slot
     let slotUpdate = undefined;
     if (status === "CANCELLED" && appointment.slotId) {
       slotUpdate = prisma.slot.update({
@@ -149,7 +139,6 @@ export async function adminUpdateAppointmentStatus(
       });
     }
 
-    // If confirmed → slot booked (fallback)
     if (status === "CONFIRMED" && appointment.slotId) {
       slotUpdate = prisma.slot.update({
         where: { id: appointment.slotId },
@@ -157,7 +146,6 @@ export async function adminUpdateAppointmentStatus(
       });
     }
 
-    // Update appointment
     const updated = await prisma.appointment.update({
       where: { id },
       data: { status },
@@ -175,68 +163,65 @@ export async function adminUpdateAppointmentStatus(
   }
 }
 
-// export async function adminGetAppointments(req: Request, res: Response) {
-//   try {
-//     const { date, status, mode, page = 1, limit = 20 } = req.query;
+export async function getMyAppointments(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
-//     const filters: any = {};
+    const appointments = await prisma.appointment.findMany({
+      where: { userId: req.user.id },
+      orderBy: { startAt: "desc" },
+      include: {
+        patient: { select: { name: true } },
+        slot: true,
+      },
+    });
 
-//     // Filter by exact date
-//     if (date) {
-//       const day = new Date(date as string);
-//       const nextDay = new Date(day);
-//       nextDay.setDate(day.getDate() + 1);
+    return res.json({ success: true, appointments });
+  } catch (err) {
+    console.error("GET MY APPOINTMENTS ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get appointments",
+    });
+  }
+}
 
-//       filters.startAt = {
-//         gte: day,
-//         lt: nextDay,
-//       };
-//     }
+export async function getAppointmentsByPatient(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
-//     // Filter by status
-//     if (status) {
-//       filters.status = status as AppointmentStatus;
-//     }
+    const { patientId } = req.params;
 
-//     // Filter by mode
-//     if (mode) {
-//       filters.mode = mode as AppointmentMode;
-//     }
+    const patient = await prisma.patientDetials.findFirst({
+      where: { id: patientId, userId: req.user.id },
+    });
 
-//     const skip = (Number(page) - 1) * Number(limit);
+    if (!patient) {
+      return res.status(403).json({
+        success: false,
+        message: "Not allowed",
+      });
+    }
 
-//     const [appointments, total] = await Promise.all([
-//       prisma.appointment.findMany({
-//         where: filters,
-//         orderBy: { startAt: "asc" },
-//         skip,
-//         take: Number(limit),
-//         include: {
-//           patient: {
-//             select: {
-//               name: true,
-//               phone: true,
-//               email: true,
-//             },
-//           },
-//           slot: true,
-//         },
-//       }),
+    const appointments = await prisma.appointment.findMany({
+      where: { patientId },
+      orderBy: { startAt: "desc" },
+      include: {
+        slot: true,
+        patient: true,
+      },
+    });
 
-//       prisma.appointment.count({ where: filters }),
-//     ]);
-
-//     return res.json({
-//       success: true,
-//       total,
-//       page: Number(page),
-//       limit: Number(limit),
-//       appointments,
-//     });
-//   } catch (err) {
-//     console.error("Admin Get Appointments Error:", err);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Something went wrong" });
-//   }
-// }
+    return res.json({ success: true, appointments });
+  } catch (err) {
+    console.error("GET APPOINTMENTS BY PATIENT ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch appointments",
+    });
+  }
+}

@@ -1,9 +1,7 @@
-// modules/patient/patient.controller.ts
 import { Request, Response } from "express";
 import { patientService } from "./patient.service";
 
 export class PatientController {
-  // USER: create patient (from multi-step form)
   async create(req: Request, res: Response) {
     try {
       if (!req.user) {
@@ -28,7 +26,6 @@ export class PatientController {
     }
   }
 
-  // USER: list own patients
   async listMine(req: Request, res: Response) {
     try {
       if (!req.user) {
@@ -51,7 +48,6 @@ export class PatientController {
     }
   }
 
-  // USER: get one of their own (for read-only detail view)
   async getMineById(req: Request, res: Response) {
     try {
       if (!req.user) {
@@ -79,7 +75,6 @@ export class PatientController {
     }
   }
 
-  // ADMIN: list all
   async adminListAll(req: Request, res: Response) {
     try {
       const patients = await patientService.adminListAllPatients();
@@ -92,7 +87,6 @@ export class PatientController {
     }
   }
 
-  // ADMIN: get details + relations
   async adminGetById(req: Request, res: Response) {
     try {
       const { id } = req.params;

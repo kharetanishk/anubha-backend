@@ -31,7 +31,6 @@ export const uploadImageToCloudinary = async (req: Request, res: Response) => {
         ],
       });
 
-      // Save to DB with patientId = null
       const saved = await prisma.file.create({
         data: {
           url: result.secure_url,
@@ -47,7 +46,7 @@ export const uploadImageToCloudinary = async (req: Request, res: Response) => {
     }
 
     res.status(200).json({
-      message: "Images uploaded successfully ✅",
+      message: "Images uploaded successfully ",
       files: uploadedFiles,
     });
   } catch (error: any) {

@@ -9,6 +9,17 @@ export class PatientService {
   ) {
     const { fileIds = [], ...rest } = data;
 
+    const exists = await prisma.patientDetials.findFirst({
+      where: {
+        userId,
+        name: rest.name,
+      },
+    });
+
+    if (exists) {
+      throw new Error("A patient with this name already exists.");
+    }
+
     const patient = await prisma.patientDetials.create({
       data: {
         userId,
@@ -31,16 +42,36 @@ export class PatientService {
     return prisma.patientDetials.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        gender: true,
+        createdAt: true,
+      },
     });
   }
 
   async getByIdForUser(patientId: string, userId: string) {
     const patient = await prisma.patientDetials.findUnique({
       where: { id: patientId },
+      include: {
+        files: true,
+        recalls: {
+          include: { entries: true },
+        },
+      },
     });
 
     if (!patient || patient.userId !== userId) return null;
     return patient;
+  }
+
+  async adminListAllPatients() {
+    return prisma.patientDetials.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { user: true },
+    });
   }
 
   async getByIdForAdmin(patientId: string) {
@@ -49,6 +80,10 @@ export class PatientService {
       include: {
         user: true,
         appointments: true,
+        files: true,
+        recalls: {
+          include: { entries: true },
+        },
       },
     });
   }
@@ -58,6 +93,7 @@ export class PatientService {
     data: Partial<CreatePatientInput>
   ) {
     const updateData: any = { ...data };
+
     if (updateData.dateOfBirth) {
       updateData.dateOfBirth = new Date(updateData.dateOfBirth);
     }
@@ -73,12 +109,9 @@ export class PatientService {
   async deleteFile(fileId: string, requester: { id: string; role: string }) {
     const file = await prisma.file.findUnique({
       where: { id: fileId },
-      include: {
-        patient: true,
-      },
+      include: { patient: true },
     });
 
-    console.log(file);
     if (!file) {
       return { success: false, code: 404, message: "File not found" };
     }
@@ -88,7 +121,12 @@ export class PatientService {
     if (!patient) {
       await prisma.file.delete({ where: { id: fileId } });
       if (file.publicId) await deleteFromCloudinary(file.publicId);
-      return { success: true, code: 200, message: "Temporary file deleted" };
+
+      return {
+        success: true,
+        code: 200,
+        message: "Temporary file deleted",
+      };
     }
 
     const isOwner = patient.userId === requester.id;
@@ -102,10 +140,8 @@ export class PatientService {
       };
     }
 
-    console.log(file.publicId);
-    if (file.publicId) {
-      await deleteFromCloudinary(file.publicId);
-    }
+    // Delete from cloudinary
+    if (file.publicId) await deleteFromCloudinary(file.publicId);
 
     await prisma.file.delete({ where: { id: fileId } });
 
@@ -114,15 +150,6 @@ export class PatientService {
       code: 200,
       message: "File deleted successfully",
     };
-  }
-
-  async adminListAllPatients() {
-    return prisma.patientDetials.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        user: true,
-      },
-    });
   }
 }
 

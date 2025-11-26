@@ -7,7 +7,6 @@ export const multerErrorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  // Handle Multer size limit errors
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
@@ -15,19 +14,16 @@ export const multerErrorHandler = (
       });
     }
 
-    // Other Multer errors (optional)
     return res.status(400).json({
       error: `Multer error: ${err.message}`,
     });
   }
 
-  // Handle custom file type errors
   if (err.name === "MulterFileTypeError") {
     return res.status(400).json({
       error: "Invalid file type. Only JPG, JPEG, and PNG files are allowed.",
     });
   }
 
-  // For any other errors, pass control to next middleware
   next(err);
 };

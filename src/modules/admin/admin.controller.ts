@@ -12,27 +12,19 @@ function dateRangeFromQuery(dateStr?: string) {
   return { gte: day, lt: nextDay };
 }
 
-//. ADMIN — GET APPOINTMENTS LIST (WITH ALL FILTERS)
 export async function adminGetAppointments(req: Request, res: Response) {
   try {
-    // Optional: Ensure admin role here or rely on route middleware
-    // if (req.user?.role !== "ADMIN") return res.status(403).json({ error: "Forbidden" });
-
     const { date, status, mode, page = "1", limit = "20", q } = req.query;
 
     const where: any = {};
 
-    // date filter
     const dateRange = dateRangeFromQuery(date as string | undefined);
     if (dateRange) where.startAt = dateRange;
 
-    // status filter
     if (status) where.status = status as AppointmentStatus;
 
-    // mode filter
     if (mode) where.mode = mode as AppointmentMode;
 
-    // optional text search across patient name/phone/email (q)
     if (q && typeof q === "string") {
       where.OR = [
         { patient: { name: { contains: q, mode: "insensitive" } } },
@@ -45,7 +37,6 @@ export async function adminGetAppointments(req: Request, res: Response) {
     const lim = Math.min(200, Math.max(1, Number(limit)));
     const skip = (pageNum - 1) * lim;
 
-    // return only lightweight fields needed for the dashboard list
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
@@ -86,7 +77,6 @@ export async function adminGetAppointments(req: Request, res: Response) {
   }
 }
 
-//. ADMIN — UPDATE APPOINTMENT STATUS
 export async function adminUpdateAppointmentStatus(
   req: Request,
   res: Response
@@ -99,7 +89,6 @@ export async function adminUpdateAppointmentStatus(
       return res.status(400).json({ error: "Missing status" });
     }
 
-    // Fetch appointment
     const appointment = await prisma.appointment.findUnique({
       where: { id },
       include: { slot: true },
@@ -109,7 +98,6 @@ export async function adminUpdateAppointmentStatus(
       return res.status(404).json({ error: "Appointment not found" });
     }
 
-    // ✋ Prevent illegal transitions
     const current = appointment.status;
 
     if (current === "CANCELLED" || current === "COMPLETED") {
@@ -118,7 +106,6 @@ export async function adminUpdateAppointmentStatus(
       });
     }
 
-    // VALID transitions:
     const allowedStatuses: AppointmentStatus[] = [
       "PENDING",
       "CONFIRMED",
@@ -130,8 +117,6 @@ export async function adminUpdateAppointmentStatus(
       return res.status(400).json({ error: "Invalid status" });
     }
 
-    // SPECIAL LOGIC:
-    // If cancelled → free the slot
     let slotUpdate = undefined;
     if (status === "CANCELLED" && appointment.slotId) {
       slotUpdate = prisma.slot.update({
@@ -140,7 +125,6 @@ export async function adminUpdateAppointmentStatus(
       });
     }
 
-    // If confirmed → slot booked (fallback)
     if (status === "CONFIRMED" && appointment.slotId) {
       slotUpdate = prisma.slot.update({
         where: { id: appointment.slotId },
@@ -148,7 +132,6 @@ export async function adminUpdateAppointmentStatus(
       });
     }
 
-    // Update appointment
     const updated = await prisma.appointment.update({
       where: { id },
       data: { status },
@@ -166,7 +149,6 @@ export async function adminUpdateAppointmentStatus(
   }
 }
 
-// GET /api/admin/appointments/:id
 export async function adminGetAppointmentDetails(req: Request, res: Response) {
   try {
     const id = req.params.id;
@@ -209,8 +191,7 @@ export async function adminGetAppointmentDetails(req: Request, res: Response) {
       .json({ success: false, message: "from adminGetappointmentdetails" });
   }
 }
-// POST /api/admin/doctor-session
-//create sessions
+
 export async function createDoctorSession(req: Request, res: Response) {
   try {
     const doctorId = req.user?.id;
@@ -219,7 +200,6 @@ export async function createDoctorSession(req: Request, res: Response) {
     const { appointmentId, patientId, title } = req.body;
     if (!patientId) return res.status(400).json({ error: "Missing patientId" });
 
-    // optional: check appointment belongs to same patient if appointmentId provided
     if (appointmentId) {
       const appt = await prisma.appointment.findUnique({
         where: { id: appointmentId },
@@ -233,7 +213,6 @@ export async function createDoctorSession(req: Request, res: Response) {
       }
     }
 
-    // create session
     const session = await prisma.doctorFormSession.create({
       data: {
         appointmentId: appointmentId ?? null,
@@ -252,8 +231,7 @@ export async function createDoctorSession(req: Request, res: Response) {
       .json({ success: false, message: "from createDoctorsession fucntion" });
   }
 }
-// PATCH /api/admin/doctor-session/:sessionId/value
-//add update field values
+
 export async function upsertDoctorFieldValue(req: Request, res: Response) {
   try {
     const doctorId = req.user?.id;
@@ -264,7 +242,6 @@ export async function upsertDoctorFieldValue(req: Request, res: Response) {
     if (!sessionId || !fieldId || !value)
       return res.status(400).json({ error: "Missing body" });
 
-    // verify session exists and doctor owns it
     const session = await prisma.doctorFormSession.findUnique({
       where: { id: sessionId },
       select: { doctorId: true },
@@ -273,14 +250,12 @@ export async function upsertDoctorFieldValue(req: Request, res: Response) {
     if (session.doctorId !== doctorId)
       return res.status(403).json({ error: "Not authorized" });
 
-    // check field exists
     const field = await prisma.doctorFieldMaster.findUnique({
       where: { id: fieldId },
       select: { id: true, type: true },
     });
     if (!field) return res.status(404).json({ error: "Field not found" });
 
-    // Basic validation: ensure the payload shape is allowed (we keep this small; frontend should ensure correct shape)
     const allowedKeys = [
       "stringValue",
       "numberValue",
@@ -295,7 +270,6 @@ export async function upsertDoctorFieldValue(req: Request, res: Response) {
       if (value[k] !== undefined) cleanData[k] = value[k];
     }
 
-    // upsert: find existing value
     const existing = await prisma.doctorFormFieldValue.findFirst({
       where: { sessionId, fieldId },
     });
@@ -321,8 +295,6 @@ export async function upsertDoctorFieldValue(req: Request, res: Response) {
   }
 }
 
-//get sessions with all values
-// GET /api/admin/doctor-session/:id
 export async function getDoctorSession(req: Request, res: Response) {
   try {
     const session = await prisma.doctorFormSession.findUnique({
@@ -343,8 +315,6 @@ export async function getDoctorSession(req: Request, res: Response) {
   }
 }
 
-//Delete session
-// DELETE /api/admin/doctor-session/:id
 export async function deleteDoctorSession(req: Request, res: Response) {
   try {
     const doctorId = req.user?.id;
@@ -367,8 +337,6 @@ export async function deleteDoctorSession(req: Request, res: Response) {
   }
 }
 
-//get fields groups
-// GET /api/admin/doctor-fields/groups
 export async function getDoctorFieldGroups(req: Request, res: Response) {
   try {
     const groups = await prisma.doctorFieldGroup.findMany({
@@ -387,8 +355,7 @@ export async function getDoctorFieldGroups(req: Request, res: Response) {
     return res.status(500).json({ success: false });
   }
 }
-//search fields
-// GET /api/admin/doctor-fields/search?q=alcohol
+
 export async function searchDoctorFields(req: Request, res: Response) {
   try {
     const q = (req.query.q as string) || "";
@@ -411,12 +378,6 @@ export async function searchDoctorFields(req: Request, res: Response) {
   }
 }
 
-/**
- * ADMIN — add a field placeholder into a session (useful when doctor clicks + to add a new field)
- * POST /api/admin/doctor-session/:sessionId/field
- * body: { fieldId: string }
- * Creates an empty DoctorFormFieldValue and returns it (so frontend can render input immediately).
- */
 export async function addFieldToSession(req: Request, res: Response) {
   try {
     const doctorId = req.user?.id;
@@ -427,7 +388,6 @@ export async function addFieldToSession(req: Request, res: Response) {
     if (!sessionId || !fieldId)
       return res.status(400).json({ error: "Missing params" });
 
-    // verify session exists and doctor owns it (or is admin)
     const session = await prisma.doctorFormSession.findUnique({
       where: { id: sessionId },
       select: { doctorId: true },
@@ -439,14 +399,12 @@ export async function addFieldToSession(req: Request, res: Response) {
         .json({ error: "Not authorized to modify this session" });
     }
 
-    // verify field exists & active
     const field = await prisma.doctorFieldMaster.findUnique({
       where: { id: fieldId },
       select: { id: true },
     });
     if (!field) return res.status(404).json({ error: "Field not found" });
 
-    // create placeholder value (no typed value yet)
     const value = await prisma.doctorFormFieldValue.create({
       data: {
         sessionId,

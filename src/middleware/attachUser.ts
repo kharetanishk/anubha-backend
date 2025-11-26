@@ -16,7 +16,6 @@ export async function attachUser(
       return next();
     }
 
-    // 1️⃣ TRY ACCESS TOKEN
     try {
       const decoded = jwt.verify(
         accessToken,
@@ -25,11 +24,8 @@ export async function attachUser(
 
       req.user = { id: decoded.id, role: decoded.role };
       return next();
-    } catch {
-      // fall back to refresh token
-    }
+    } catch {}
 
-    // 2️⃣ TRY REFRESH TOKEN
     if (!refreshToken) return next();
 
     const storedToken = await prisma.refreshToken.findUnique({
@@ -41,10 +37,6 @@ export async function attachUser(
       return next();
     }
 
-    // ——————————————————
-    // 3️⃣ CHECK WHO OWNS THE TOKEN
-    // ——————————————————
-
     let owner: { id: string; role: "USER" | "ADMIN" } | null = null;
 
     if (storedToken.user) {
@@ -54,10 +46,6 @@ export async function attachUser(
     } else {
       return next();
     }
-
-    // ——————————————————
-    // 4️⃣ ISSUE NEW ACCESS TOKEN
-    // ——————————————————
 
     const newAccessToken = generateAccessToken({
       id: owner.id,

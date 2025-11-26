@@ -180,6 +180,9 @@ model PatientDetials {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   DoctorFormSession DoctorFormSession[]
+
+  @@unique([userId, name])
+
 }
 
 model Recall {
@@ -273,9 +276,9 @@ model Appointment {
 
   paymentId    String?
   amount       Int?
-  meetingUrl   String?
   notes        String?
   reminderSent Boolean @default(false)
+  shortNoticeReminderSent Boolean @default(false)
 
   // PLAN DETAILS
   planSlug        String
@@ -414,3 +417,32 @@ model DoctorFormFieldValue {
 }
 
 
+model Reminder {
+  id            String    @id @default(uuid())
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String
+  toUser        Boolean   @default(true)        // true => user, false => doctor (we create two reminders per appointment)
+  scheduledAt   DateTime
+  sentAt        DateTime? 
+  status        String    @default("PENDING")  // PENDING | SENT | FAILED
+  attempts      Int       @default(0)
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([scheduledAt])
+  @@index([appointmentId])
+}
+
+model MessageLog {
+  id          String   @id @default(uuid())
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  appointmentId String?
+  toNumber    String
+  channel     String   // "WHATSAPP"
+  template    String?
+  payload     Json?
+  sentAt      DateTime @default(now())
+  status      String   // "SENT" | "FAILED"
+  error       String?
+}
