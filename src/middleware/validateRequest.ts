@@ -1,8 +1,8 @@
 import { NextFunction, Request, Response } from "express";
-import { ZodObject } from "zod";
+import { ZodType } from "zod";
 
 export const validateBody =
-  (schema: ZodObject) => (req: Request, res: Response, next: NextFunction) => {
+  (schema: ZodType) => (req: Request, res: Response, next: NextFunction) => {
     const parsed = schema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -16,6 +16,6 @@ export const validateBody =
       });
     }
 
-    req.body = parsed.data;
+    req.body = parsed.data; // sanitized
     next();
   };

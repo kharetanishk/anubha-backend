@@ -26,13 +26,22 @@ app.post("/api/payment/webhook", rawBodyMiddleware, razorpayWebhookHandler);
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 
 app.get("/public", (req, res) => {
   return res.json({
     message: "Public route working",
     user: req.user || null,
   });
+});
+
+app.get("/api/health", (req: Request, res: Response) => {
+  return res.json({ message: "Nutriwell Backend Connected Successfully!" });
 });
 
 //routes

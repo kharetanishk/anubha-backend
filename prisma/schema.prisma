@@ -91,24 +91,26 @@ enum DoctorFieldType {
 model User {
   id            String           @id @default(uuid())
   name          String
-  email         String           @unique
-  // phone      String           @unique
+  email         String?           @unique
+  phone         String           @unique
   role          Role             @default(USER)
   patients      PatientDetials[]
   appointments  Appointment[]
   refreshTokens RefreshToken[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
+
+  @@index([phone])
 }
 
 model OTP {
   id        String   @id @default(uuid())
-  email     String
+  phone     String
   code      String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  @@index([email])
+  @@index([phone])
 }
 
 model RefreshToken {
@@ -182,7 +184,6 @@ model PatientDetials {
   DoctorFormSession DoctorFormSession[]
 
   @@unique([userId, name])
-
 }
 
 model Recall {
@@ -274,10 +275,10 @@ model Appointment {
   slot   Slot?   @relation(fields: [slotId], references: [id])
   slotId String? @unique
 
-  paymentId    String?
-  amount       Int?
-  notes        String?
-  reminderSent Boolean @default(false)
+  paymentId               String?
+  amount                  Int?
+  notes                   String?
+  reminderSent            Boolean @default(false)
   shortNoticeReminderSent Boolean @default(false)
 
   // PLAN DETAILS
@@ -292,6 +293,8 @@ model Appointment {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   DoctorFormSession DoctorFormSession[]
+  Reminder          Reminder[]
+  MessageLog        MessageLog[]
 
   @@index([startAt])
   @@index([doctorId, startAt])
@@ -339,7 +342,6 @@ model DoctorFieldMaster {
   groupId     String?
   order       Int               @default(0)
 
-  // SELECT / MULTISELECT / RADIO -> options here
   options DoctorFieldOption[]
 
   active Boolean @default(true)
@@ -366,9 +368,6 @@ model DoctorFieldOption {
   @@index([fieldId])
 }
 
-/**
- * One doctor form session (created when admin clicks + for a patient/appointment)
- */
 model DoctorFormSession {
   id String @id @default(uuid())
 
@@ -406,43 +405,41 @@ model DoctorFormFieldValue {
   booleanValue Boolean?
   dateValue    DateTime?
   timeValue    String?
-  jsonValue    Json? // for multi-select or structured data
-
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  jsonValue    Json?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([sessionId])
   @@index([fieldId])
 }
 
-
 model Reminder {
-  id            String    @id @default(uuid())
+  id            String      @id @default(uuid())
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   appointmentId String
-  toUser        Boolean   @default(true)        // true => user, false => doctor (we create two reminders per appointment)
+  toUser        Boolean     @default(true)
   scheduledAt   DateTime
-  sentAt        DateTime? 
-  status        String    @default("PENDING")  // PENDING | SENT | FAILED
-  attempts      Int       @default(0)
+  sentAt        DateTime?
+  status        String      @default("PENDING")
+  attempts      Int         @default(0)
   lastError     String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([scheduledAt])
   @@index([appointmentId])
 }
 
 model MessageLog {
-  id          String   @id @default(uuid())
-  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  id            String       @id @default(uuid())
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
   appointmentId String?
-  toNumber    String
-  channel     String   // "WHATSAPP"
-  template    String?
-  payload     Json?
-  sentAt      DateTime @default(now())
-  status      String   // "SENT" | "FAILED"
-  error       String?
+  toNumber      String
+  channel       String
+  template      String?
+  payload       Json?
+  sentAt        DateTime     @default(now())
+  status        String
+  error         String?
 }

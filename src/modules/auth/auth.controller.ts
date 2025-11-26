@@ -4,16 +4,9 @@ import { authService } from "./auth.service";
 export class AuthController {
   async sendRegisterOtp(req: Request, res: Response) {
     try {
-      const { name, email } = req.body;
+      const { name, phone } = req.body;
 
-      if (!name || !email) {
-        return res.status(400).json({
-          success: false,
-          message: "Name and email are required.",
-        });
-      }
-
-      const response = await authService.sendRegisterOtp(name, email);
+      const response = await authService.sendRegisterOtp(name, phone);
 
       return res.status(200).json({
         success: true,
@@ -29,27 +22,20 @@ export class AuthController {
 
   async verifyRegisterOtp(req: Request, res: Response) {
     try {
-      const { name, email, otp } = req.body;
+      const { name, phone, otp } = req.body;
 
-      if (!name || !email || !otp) {
-        return res.status(400).json({
-          success: false,
-          message: "Name, email & OTP are required.",
-        });
-      }
-
-      const response = await authService.verifyRegisterOtp(name, email, otp);
+      const response = await authService.verifyRegisterOtp(name, phone, otp);
 
       res.cookie("access_token", response.tokens.accessToken, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         maxAge: 15 * 60 * 1000,
       });
 
       res.cookie("refresh_token", response.tokens.refreshToken, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         maxAge: 30 * 24 * 60 * 60 * 1000,
       });
@@ -68,16 +54,9 @@ export class AuthController {
 
   async sendLoginOtp(req: Request, res: Response) {
     try {
-      const { email } = req.body;
+      const { phone } = req.body;
 
-      if (!email) {
-        return res.status(400).json({
-          success: false,
-          message: "Email is required.",
-        });
-      }
-
-      const response = await authService.sendLoginOtp(email);
+      const response = await authService.sendLoginOtp(phone);
 
       return res.status(200).json({
         success: true,
@@ -90,29 +69,23 @@ export class AuthController {
       });
     }
   }
+
   async verifyLoginOtp(req: Request, res: Response) {
     try {
-      const { email, otp } = req.body;
+      const { phone, otp } = req.body;
 
-      if (!email || !otp) {
-        return res.status(400).json({
-          success: false,
-          message: "Email & OTP are required.",
-        });
-      }
-
-      const response = await authService.verifyLoginOtp(email, otp);
+      const response = await authService.verifyLoginOtp(phone, otp);
 
       res.cookie("access_token", response.tokens.accessToken, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         maxAge: 15 * 60 * 1000,
       });
 
       res.cookie("refresh_token", response.tokens.refreshToken, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         maxAge: 30 * 24 * 60 * 60 * 1000,
       });
