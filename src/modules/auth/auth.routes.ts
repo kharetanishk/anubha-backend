@@ -42,7 +42,8 @@ authRoutes.post(
   authController.verifyLoginOtp.bind(authController)
 );
 
-authRoutes.get("/refresh", refreshSession);
+authRoutes.get("/session", refreshSession);
+authRoutes.get("/me", authController.getMe.bind(authController));
 authRoutes.post("/logout", logout);
 
 export default authRoutes;

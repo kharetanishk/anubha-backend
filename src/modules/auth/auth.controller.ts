@@ -26,23 +26,17 @@ export class AuthController {
 
       const response = await authService.verifyRegisterOtp(name, phone, otp);
 
-      res.cookie("access_token", response.tokens.accessToken, {
+      res.cookie("auth_token", response.token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 15 * 60 * 1000,
-      });
-
-      res.cookie("refresh_token", response.tokens.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
+        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
       return res.status(200).json({
         success: true,
-        ...response,
+        message: response.message,
+        user: response.user,
       });
     } catch (error: any) {
       return res.status(400).json({
@@ -76,23 +70,41 @@ export class AuthController {
 
       const response = await authService.verifyLoginOtp(phone, otp);
 
-      res.cookie("access_token", response.tokens.accessToken, {
+      res.cookie("auth_token", response.token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 15 * 60 * 1000,
-      });
-
-      res.cookie("refresh_token", response.tokens.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
+        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
       return res.status(200).json({
         success: true,
-        ...response,
+        message: response.message,
+        role: response.role,
+        user: response.owner,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  async getMe(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Not authenticated",
+        });
+      }
+
+      const response = await authService.getMe(req.user.id, req.user.role);
+
+      return res.status(200).json({
+        success: true,
+        user: response,
       });
     } catch (error: any) {
       return res.status(400).json({

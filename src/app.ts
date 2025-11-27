@@ -15,6 +15,7 @@ import paymentRoutes from "./modules/payment/payment.routes";
 
 dotenv.config();
 
+const PORT = process.env.PORT || 4000;
 const app = express();
 
 app.use(cookieParser());
@@ -24,7 +25,6 @@ app.use(attachUser);
 app.post("/api/payment/webhook", rawBodyMiddleware, razorpayWebhookHandler);
 
 app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true }));
 
 const allowedOrigins = ["http://localhost:3000", "http://192.168.29.116:3000"];
 
@@ -41,27 +41,21 @@ app.use(
   })
 );
 
-app.get("/public", (req, res) => {
-  return res.json({
-    message: "Public route working",
-    user: req.user || null,
-  });
-});
-
 app.get("/api/health", (req: Request, res: Response) => {
   return res.json({ message: "Nutriwell Backend Connected Successfully!" });
 });
 
-//routes
+
 app.use("/api/auth", authRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/upload", uploadRoutes);
-app.use(multerErrorHandler);
 app.use("/api/slots", slotRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/payment", paymentRoutes);
 
-const PORT = process.env.PORT || 4000;
+app.use(multerErrorHandler);
+
+
 app.listen(PORT, () =>
   console.log(`Server running on port http://localhost:${PORT}`)
 );

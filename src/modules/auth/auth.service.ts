@@ -1,7 +1,7 @@
 import prisma from "../../database/prismaclient";
 import crypto from "crypto";
 import { hashOtp, validateOtp, isOtpExpired } from "./utils/validateOtp";
-import { generateTokenPair } from "./utils/token";
+import { generateToken } from "./utils/token";
 import { AppError } from "../../util/Apperror";
 
 export class AuthService {
@@ -77,12 +77,12 @@ export class AuthService {
       data: { name, phone },
     });
 
-    const tokens = await generateTokenPair(user.id, "USER");
+    const token = generateToken(user.id, "USER");
 
     return {
       message: "User registered successfully.",
       user,
-      tokens,
+      token,
     };
   }
 
@@ -126,14 +126,39 @@ export class AuthService {
 
     await prisma.oTP.delete({ where: { id: foundOtp.id } });
 
-    const tokens = await generateTokenPair(owner.id, owner.role);
+    const token = generateToken(owner.id, owner.role);
 
     return {
       message: "Logged in successfully.",
       role: owner.role,
       owner,
-      tokens,
+      token,
     };
+  }
+
+  /* ---------------- GET ME ---------------- */
+  async getMe(ownerId: string, role: "USER" | "ADMIN") {
+    if (role === "USER") {
+      const user = await prisma.user.findUnique({
+        where: { id: ownerId },
+        select: { id: true, name: true, phone: true },
+      });
+
+      if (!user) throw new AppError("User not found", 404);
+      return { ...user, role: "USER" };
+    }
+
+    if (role === "ADMIN") {
+      const admin = await prisma.admin.findUnique({
+        where: { id: ownerId },
+        select: { id: true, name: true, phone: true },
+      });
+
+      if (!admin) throw new AppError("Admin not found", 404);
+      return { ...admin, role: "ADMIN" };
+    }
+
+    throw new AppError("Invalid role", 400);
   }
 }
 
