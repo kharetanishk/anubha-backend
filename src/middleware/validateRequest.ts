@@ -3,6 +3,15 @@ import { ZodType } from "zod";
 
 export const validateBody =
   (schema: ZodType) => (req: Request, res: Response, next: NextFunction) => {
+    // Check if body exists
+    if (!req.body || Object.keys(req.body).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Request body is required",
+        errors: [{ path: "body", message: "Request body cannot be empty" }],
+      });
+    }
+
     const parsed = schema.safeParse(req.body);
 
     if (!parsed.success) {

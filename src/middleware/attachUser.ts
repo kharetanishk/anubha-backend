@@ -7,7 +7,16 @@ export async function attachUser(
   next: NextFunction
 ) {
   try {
-    const token = req.cookies.auth_token;
+    // Try to get token from Authorization header first (Bearer token)
+    let token: string | undefined;
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    } else {
+      // Fallback to cookie
+      token = req.cookies.auth_token;
+    }
 
     if (!token) {
       return next();
@@ -20,7 +29,8 @@ export async function attachUser(
     }
 
     return next();
-  } catch {
+  } catch (err) {
+    // Silently continue if token verification fails
     return next();
   }
 }

@@ -6,6 +6,14 @@ export class AuthController {
     try {
       const { name, phone } = req.body;
 
+      // Additional validation - ensure body is not empty
+      if (!name || !phone) {
+        return res.status(400).json({
+          success: false,
+          message: "Name and phone are required",
+        });
+      }
+
       const response = await authService.sendRegisterOtp(name, phone);
 
       return res.status(200).json({
@@ -13,9 +21,11 @@ export class AuthController {
         ...response,
       });
     } catch (error: any) {
-      return res.status(400).json({
+      // Return appropriate status code based on error type
+      const statusCode = error.statusCode || 400;
+      return res.status(statusCode).json({
         success: false,
-        message: error.message,
+        message: error.message || "Failed to send OTP",
       });
     }
   }
@@ -29,8 +39,9 @@ export class AuthController {
       res.cookie("auth_token", response.token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+        sameSite: "lax", // Use "lax" for localhost compatibility
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: "/",
       });
 
       return res.status(200).json({
@@ -50,6 +61,14 @@ export class AuthController {
     try {
       const { phone } = req.body;
 
+      // Additional validation - ensure body is not empty
+      if (!phone) {
+        return res.status(400).json({
+          success: false,
+          message: "Phone number is required",
+        });
+      }
+
       const response = await authService.sendLoginOtp(phone);
 
       return res.status(200).json({
@@ -57,9 +76,11 @@ export class AuthController {
         ...response,
       });
     } catch (error: any) {
-      return res.status(400).json({
+      // Return appropriate status code based on error type
+      const statusCode = error.statusCode || 400;
+      return res.status(statusCode).json({
         success: false,
-        message: error.message,
+        message: error.message || "Failed to send OTP",
       });
     }
   }
@@ -73,8 +94,9 @@ export class AuthController {
       res.cookie("auth_token", response.token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+        sameSite: "lax", // Use "lax" for localhost compatibility
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: "/",
       });
 
       return res.status(200).json({

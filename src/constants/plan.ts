@@ -57,7 +57,7 @@ export const PLANS = {
 
   "general-consultation": {
     name: "General Consultation (40 min)",
-    price: 1000,
+    price: 1, // Changed to ₹1 for testing
     duration: "40 min",
     packageName: "Consultation Session",
   },

@@ -7,14 +7,11 @@
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
-<<<<<<< HEAD
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts",
+    "seed:slots": "ts-node src/scripts/seedSlots.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
-=======
-    "seed:slots": "ts-node src/scripts/seedSlots.ts"
->>>>>>> f29870b504be9c9ca15bb722d886410013cb924c
   },
   "keywords": [],
   "author": "",

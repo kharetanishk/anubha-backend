@@ -7,6 +7,7 @@ import {
   getAvailableSlotsHandler,
   adminGetSlotsHandler,
   adminGetDayOffListHandler,
+  previewSlotsHandler,
 } from "./slots.controller";
 import { requireRole } from "../../middleware/requiredRole";
 import { Role } from "@prisma/client";
@@ -15,9 +16,19 @@ import { requireAuth } from "../../middleware/requireAuth";
 
 const slotRoutes = Router();
 
+// Admin: preview slots for a date range (before creating)
+slotRoutes.get(
+  "/admin/preview",
+  attachUser,
+  requireAuth,
+  requireRole(Role.ADMIN),
+  previewSlotsHandler
+);
+
 // Admin: generate slots for a date range
 slotRoutes.post(
   "/admin/generate",
+  attachUser,
   requireAuth,
   requireRole(Role.ADMIN),
   generateSlotsHandler
@@ -26,6 +37,7 @@ slotRoutes.post(
 // Admin: add a day off
 slotRoutes.post(
   "/admin/day-off",
+  attachUser,
   requireAuth,
   requireRole(Role.ADMIN),
   addDayOffHandler
@@ -34,6 +46,7 @@ slotRoutes.post(
 // Admin: remove a day off
 slotRoutes.delete(
   "/admin/day-off/:id",
+  attachUser,
   requireAuth,
   requireRole(Role.ADMIN),
   removeDayOffHandler
@@ -41,6 +54,7 @@ slotRoutes.delete(
 // ADMIN: get all slots (with filters)
 slotRoutes.get(
   "/admin/list",
+  attachUser,
   requireAuth,
   requireRole(Role.ADMIN),
   adminGetSlotsHandler
@@ -49,6 +63,7 @@ slotRoutes.get(
 // ADMIN: get all day-offs
 slotRoutes.get(
   "/admin/day-off",
+  attachUser,
   requireAuth,
   requireRole(Role.ADMIN),
   adminGetDayOffListHandler

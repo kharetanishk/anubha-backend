@@ -7,6 +7,7 @@ import {
   getAvailableSlotsForDate,
   getAdminSlots,
   getAdminDayOffList,
+  previewSlotsForRange,
 } from "./slots.services";
 import {
   generateSlotsSchema,
@@ -76,16 +77,30 @@ export async function removeDayOffHandler(req: Request, res: Response) {
 
 export async function getAvailableSlotsHandler(req: Request, res: Response) {
   try {
+    console.log(" [SLOTS CONTROLLER] Available slots request received");
+    console.log(" [SLOTS CONTROLLER] Query params:", req.query);
+
     const parsed = availableSlotsQuerySchema.parse(req.query);
+    console.log(" [SLOTS CONTROLLER] Validated query:", parsed);
 
     const slots = await getAvailableSlotsForDate(parsed);
+
+    console.log(" [SLOTS CONTROLLER] Returning slots:", {
+      count: slots.length,
+      date: parsed.date,
+      mode: parsed.mode,
+    });
 
     return res.status(200).json({
       success: true,
       data: slots,
     });
   } catch (err: any) {
-    console.error("getAvailableSlotsHandler error:", err);
+    console.error(" [SLOTS CONTROLLER] getAvailableSlotsHandler error:", err);
+    console.error(" [SLOTS CONTROLLER] Error details:", {
+      message: err?.message,
+      name: err?.name,
+    });
     return res.status(400).json({
       success: false,
       message: err?.message || "Failed to fetch available slots",
@@ -125,6 +140,52 @@ export async function adminGetDayOffListHandler(req: Request, res: Response) {
     return res.status(400).json({
       success: false,
       message: err?.message || "Failed to fetch day off list",
+    });
+  }
+}
+
+export async function previewSlotsHandler(req: Request, res: Response) {
+  try {
+    // Parse query params - modes should be comma-separated string
+    const { startDate, endDate, modes } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate and endDate are required",
+      });
+    }
+
+    // Parse modes from query string (comma-separated or array)
+    let modesArray: string[] = [];
+    if (modes) {
+      if (typeof modes === "string") {
+        modesArray = modes.split(",").map((m) => m.trim());
+      } else if (Array.isArray(modes)) {
+        modesArray = modes.map((m) => String(m).trim());
+      }
+    } else {
+      // Default to both modes if not specified
+      modesArray = ["IN_PERSON", "ONLINE"];
+    }
+
+    const parsed = generateSlotsSchema.parse({
+      startDate: String(startDate),
+      endDate: String(endDate),
+      modes: modesArray,
+    });
+
+    const preview = await previewSlotsForRange(parsed);
+
+    return res.status(200).json({
+      success: true,
+      data: preview,
+    });
+  } catch (err: any) {
+    console.error("previewSlotsHandler error:", err);
+    return res.status(400).json({
+      success: false,
+      message: err?.message || "Failed to preview slots",
     });
   }
 }

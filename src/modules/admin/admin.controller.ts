@@ -46,6 +46,8 @@ export async function adminGetAppointments(req: Request, res: Response) {
           endAt: true,
           status: true,
           mode: true,
+          planName: true,
+          paymentStatus: true,
           patient: {
             select: {
               id: true,
@@ -54,8 +56,8 @@ export async function adminGetAppointments(req: Request, res: Response) {
               email: true,
             },
           },
-        },
-        orderBy: { startAt: "asc" },
+        } as any,
+        orderBy: { startAt: "desc" }, // Most recent first
         skip,
         take: lim,
       }),
@@ -197,7 +199,7 @@ export async function createDoctorSession(req: Request, res: Response) {
     const doctorId = req.user?.id;
     if (!doctorId) return res.status(401).json({ error: "Unauthenticated" });
 
-    const { appointmentId, patientId, title } = req.body;
+    const { appointmentId, patientId, title, notes, fieldValues } = req.body;
     if (!patientId) return res.status(400).json({ error: "Missing patientId" });
 
     if (appointmentId) {
@@ -213,17 +215,112 @@ export async function createDoctorSession(req: Request, res: Response) {
       }
     }
 
-    const session = await prisma.doctorFormSession.create({
-      data: {
-        appointmentId: appointmentId ?? null,
-        patientId,
-        doctorId,
-        title: title ?? "Assessment",
+    // Check if session already exists for this appointment
+    let session;
+    if (appointmentId) {
+      const existing = await prisma.doctorFormSession.findFirst({
+        where: { appointmentId, doctorId },
+      });
+      if (existing) {
+        // Update existing session
+        session = await prisma.doctorFormSession.update({
+          where: { id: existing.id },
+          data: {
+            title: title ?? existing.title,
+            notes: notes ?? existing.notes,
+          },
+          include: {
+            values: { include: { field: { include: { options: true } } } },
+          },
+        });
+      } else {
+        // Create new session
+        session = await prisma.doctorFormSession.create({
+          data: {
+            appointmentId: appointmentId ?? null,
+            patientId,
+            doctorId,
+            title: title ?? "Assessment",
+            notes: notes ?? null,
+          },
+          include: {
+            values: { include: { field: { include: { options: true } } } },
+          },
+        });
+      }
+    } else {
+      session = await prisma.doctorFormSession.create({
+        data: {
+          appointmentId: appointmentId ?? null,
+          patientId,
+          doctorId,
+          title: title ?? "Assessment",
+          notes: notes ?? null,
+        },
+        include: {
+          values: { include: { field: { include: { options: true } } } },
+        },
+      });
+    }
+
+    // Save field values if provided
+    if (fieldValues && Array.isArray(fieldValues)) {
+      for (const fv of fieldValues) {
+        const { fieldId, value } = fv;
+        if (!fieldId) continue;
+
+        const field = await prisma.doctorFieldMaster.findUnique({
+          where: { id: fieldId },
+          select: { id: true, type: true },
+        });
+        if (!field) continue;
+
+        const cleanData: any = {};
+        if (value.stringValue !== undefined)
+          cleanData.stringValue = value.stringValue;
+        if (value.numberValue !== undefined)
+          cleanData.numberValue = value.numberValue;
+        if (value.booleanValue !== undefined)
+          cleanData.booleanValue = value.booleanValue;
+        if (value.dateValue !== undefined)
+          cleanData.dateValue = value.dateValue
+            ? new Date(value.dateValue)
+            : null;
+        if (value.timeValue !== undefined)
+          cleanData.timeValue = value.timeValue;
+        if (value.jsonValue !== undefined)
+          cleanData.jsonValue = value.jsonValue;
+        if (value.notes !== undefined) cleanData.notes = value.notes;
+
+        const existing = await prisma.doctorFormFieldValue.findFirst({
+          where: { sessionId: session.id, fieldId },
+        });
+
+        if (existing) {
+          await prisma.doctorFormFieldValue.update({
+            where: { id: existing.id },
+            data: cleanData,
+          });
+        } else {
+          await prisma.doctorFormFieldValue.create({
+            data: { sessionId: session.id, fieldId, ...cleanData },
+          });
+        }
+      }
+    }
+
+    // Fetch updated session with all values
+    const updatedSession = await prisma.doctorFormSession.findUnique({
+      where: { id: session.id },
+      include: {
+        values: {
+          include: { field: { include: { options: true } } },
+          orderBy: { createdAt: "asc" },
+        },
       },
-      include: { values: { include: { field: true } } },
     });
 
-    return res.json({ success: true, session });
+    return res.json({ success: true, session: updatedSession });
   } catch (err) {
     console.error("Create Doctor Session Error:", err);
     return res
@@ -417,5 +514,183 @@ export async function addFieldToSession(req: Request, res: Response) {
   } catch (err) {
     console.error("Add Field To Session Error:", err);
     return res.status(500).json({ success: false });
+  }
+}
+
+export async function saveDoctorSession(req: Request, res: Response) {
+  try {
+    const doctorId = req.user?.id;
+    if (!doctorId) return res.status(401).json({ error: "Unauthenticated" });
+
+    const { appointmentId, patientId, title, notes, fieldValues } = req.body;
+
+    if (!patientId) {
+      return res.status(400).json({ error: "Missing patientId" });
+    }
+
+    // Verify patient exists
+    const patient = await prisma.patientDetials.findUnique({
+      where: { id: patientId },
+      select: { id: true },
+    });
+    if (!patient) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
+
+    // Verify appointment if provided
+    if (appointmentId) {
+      const appointment = await prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { id: true, patientId: true },
+      });
+      if (!appointment) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+      if (appointment.patientId !== patientId) {
+        return res
+          .status(400)
+          .json({ error: "Appointment does not belong to this patient" });
+      }
+    }
+
+    // Find or create session
+    let session;
+    const existingSession = await prisma.doctorFormSession.findFirst({
+      where: {
+        appointmentId: appointmentId || null,
+        patientId,
+        doctorId,
+      },
+    });
+
+    if (existingSession) {
+      // Update existing session
+      session = await prisma.doctorFormSession.update({
+        where: { id: existingSession.id },
+        data: {
+          title: title !== undefined ? title : existingSession.title,
+          notes: notes !== undefined ? notes : existingSession.notes,
+        },
+      });
+    } else {
+      // Create new session
+      session = await prisma.doctorFormSession.create({
+        data: {
+          appointmentId: appointmentId || null,
+          patientId,
+          doctorId,
+          title: title || "Doctor Notes",
+          notes: notes || null,
+        },
+      });
+    }
+
+    // Handle field values
+    if (fieldValues && Array.isArray(fieldValues)) {
+      // Get all existing field values for this session
+      const existingFieldValues = await prisma.doctorFormFieldValue.findMany({
+        where: { sessionId: session.id },
+        select: { id: true, fieldId: true },
+      });
+
+      // Create a set of field IDs that should exist after save
+      const fieldIdsToKeep = new Set(
+        fieldValues.map((fv: any) => fv.fieldId).filter(Boolean)
+      );
+
+      // Delete field values that are no longer in the array
+      const fieldValuesToDelete = existingFieldValues.filter(
+        (efv) => !fieldIdsToKeep.has(efv.fieldId)
+      );
+      if (fieldValuesToDelete.length > 0) {
+        await prisma.doctorFormFieldValue.deleteMany({
+          where: {
+            id: { in: fieldValuesToDelete.map((fv) => fv.id) },
+          },
+        });
+      }
+
+      // Create or update field values
+      for (const fv of fieldValues) {
+        const { fieldId, value } = fv;
+        if (!fieldId || !value) continue;
+
+        // Verify field exists
+        const field = await prisma.doctorFieldMaster.findUnique({
+          where: { id: fieldId },
+          select: { id: true, type: true },
+        });
+        if (!field) continue;
+
+        // Prepare clean data
+        const cleanData: any = {};
+        if (value.stringValue !== undefined)
+          cleanData.stringValue = value.stringValue;
+        if (value.numberValue !== undefined)
+          cleanData.numberValue = value.numberValue;
+        if (value.booleanValue !== undefined)
+          cleanData.booleanValue = value.booleanValue;
+        if (value.dateValue !== undefined)
+          cleanData.dateValue = value.dateValue
+            ? new Date(value.dateValue)
+            : null;
+        if (value.timeValue !== undefined)
+          cleanData.timeValue = value.timeValue;
+        if (value.jsonValue !== undefined)
+          cleanData.jsonValue = value.jsonValue;
+        if (value.notes !== undefined) cleanData.notes = value.notes;
+
+        // Find existing field value
+        const existingFieldValue = existingFieldValues.find(
+          (efv) => efv.fieldId === fieldId
+        );
+
+        if (existingFieldValue) {
+          // Update existing field value
+          await prisma.doctorFormFieldValue.update({
+            where: { id: existingFieldValue.id },
+            data: cleanData,
+          });
+        } else {
+          // Create new field value
+          await prisma.doctorFormFieldValue.create({
+            data: {
+              sessionId: session.id,
+              fieldId,
+              ...cleanData,
+            },
+          });
+        }
+      }
+    }
+
+    // Fetch complete session with all values
+    const savedSession = await prisma.doctorFormSession.findUnique({
+      where: { id: session.id },
+      include: {
+        values: {
+          include: {
+            field: {
+              include: { options: true },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    return res.json({
+      success: true,
+      session: savedSession,
+      message: existingSession
+        ? "Doctor notes updated successfully"
+        : "Doctor notes saved successfully",
+    });
+  } catch (err: any) {
+    console.error("Save Doctor Session Error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to save doctor notes",
+    });
   }
 }

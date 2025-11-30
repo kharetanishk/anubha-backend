@@ -4,6 +4,7 @@ import { validateBody } from "../../middleware/validateRequest";
 import { createPatientSchema } from "./patient.validators";
 import { requireAuth } from "../../middleware/requireAuth";
 import { requireRole } from "../../middleware/requiredRole";
+import { attachUser } from "../../middleware/attachUser";
 import { patientLimiter } from "../../middleware/rateLimit";
 import { createRecallSchema } from "./recall_form/recall.validation";
 import {
@@ -16,38 +17,56 @@ const patientRoutes = Router();
 
 patientRoutes.post(
   "/",
+  attachUser,
   requireAuth,
   patientLimiter,
   validateBody(createPatientSchema),
   (req, res) => patientController.create(req, res)
 );
 
-patientRoutes.get("/me", requireAuth, (req, res) =>
+patientRoutes.get("/me", attachUser, requireAuth, (req, res) =>
   patientController.listMine(req, res)
 );
 
-patientRoutes.get("/me/:id", requireAuth, (req, res) =>
+patientRoutes.get("/me/:id", attachUser, requireAuth, (req, res) =>
   patientController.getMineById(req, res)
 );
 
-patientRoutes.get("/", requireAuth, requireRole("ADMIN"), (req, res) =>
-  patientController.adminListAll(req, res)
+patientRoutes.get(
+  "/",
+  attachUser,
+  requireAuth,
+  requireRole("ADMIN"),
+  (req, res) => patientController.adminListAll(req, res)
 );
 
-patientRoutes.get("/:id", requireAuth, requireRole("ADMIN"), (req, res) =>
-  patientController.adminGetById(req, res)
+patientRoutes.get(
+  "/:id",
+  attachUser,
+  requireAuth,
+  requireRole("ADMIN"),
+  (req, res) => patientController.adminGetById(req, res)
 );
 
-patientRoutes.patch("/:id", requireAuth, requireRole("ADMIN"), (req, res) =>
-  patientController.adminUpdate(req, res)
+patientRoutes.patch(
+  "/:id",
+  attachUser,
+  requireAuth,
+  requireRole("ADMIN"),
+  (req, res) => patientController.adminUpdate(req, res)
 );
 
-patientRoutes.delete("/file/:fileId", requireAuth, (req, res) =>
+patientRoutes.patch("/:id/files", attachUser, requireAuth, (req, res) =>
+  patientController.linkFiles(req, res)
+);
+
+patientRoutes.delete("/file/:fileId", attachUser, requireAuth, (req, res) =>
   patientController.deleteFile(req, res)
 );
 
 patientRoutes.post(
   "/recall",
+  attachUser,
   requireAuth,
   validateBody(createRecallSchema),
   createRecallHandler
@@ -55,10 +74,16 @@ patientRoutes.post(
 
 patientRoutes.delete(
   "/recall/:recallId/entry/:entryId",
+  attachUser,
   requireAuth,
   deleteRecallEntryHandler
 );
 
-patientRoutes.get("/recall/:recallId", requireAuth, getRecallHandler);
+patientRoutes.get(
+  "/recall/:recallId",
+  attachUser,
+  requireAuth,
+  getRecallHandler
+);
 
 export default patientRoutes;

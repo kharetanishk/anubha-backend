@@ -17,7 +17,7 @@ async function createAdminIfNotExists() {
     const existingAdmin = await prisma.admin.findFirst();
 
     if (existingAdmin) {
-      console.log("✅ Admin already exists:", existingAdmin.name);
+      console.log(" Admin already exists:", existingAdmin.name);
       return existingAdmin.id;
     }
 
@@ -31,10 +31,10 @@ async function createAdminIfNotExists() {
       },
     });
 
-    console.log(`✅ Admin created successfully: ${admin.name} (${admin.email})`);
+    console.log(` Admin created successfully: ${admin.name} (${admin.email})`);
     return admin.id;
   } catch (error: any) {
-    console.error("❌ Error creating admin:", error.message);
+    console.error(" Error creating admin:", error.message);
     throw error;
   }
 }
@@ -54,9 +54,7 @@ async function seedSlots() {
       endDate: "2025-11-30",
       modes: [APPOINTMENT_MODES.IN_PERSON, APPOINTMENT_MODES.ONLINE],
     });
-    console.log(
-      `✅ November: Created ${novemberResult.createdCount} slots\n`
-    );
+    console.log(` November: Created ${novemberResult.createdCount} slots\n`);
 
     // Step 3: Generate slots for December 2025
     console.log("📅 Generating slots for December 2025...");
@@ -65,24 +63,18 @@ async function seedSlots() {
       endDate: "2025-12-31",
       modes: [APPOINTMENT_MODES.IN_PERSON, APPOINTMENT_MODES.ONLINE],
     });
-    console.log(
-      `✅ December: Created ${decemberResult.createdCount} slots\n`
-    );
+    console.log(` December: Created ${decemberResult.createdCount} slots\n`);
 
     const totalSlots =
       novemberResult.createdCount + decemberResult.createdCount;
 
     console.log("🎉 Seed process completed!");
     console.log(`📊 Total slots created: ${totalSlots}`);
-    console.log(
-      `   - November: ${novemberResult.createdCount} slots`
-    );
-    console.log(
-      `   - December: ${decemberResult.createdCount} slots`
-    );
+    console.log(`   - November: ${novemberResult.createdCount} slots`);
+    console.log(`   - December: ${decemberResult.createdCount} slots`);
     console.log("\n✨ Note: Sundays and day-offs are automatically skipped.");
   } catch (error: any) {
-    console.error("❌ Error in seed process:", error.message);
+    console.error(" Error in seed process:", error.message);
     throw error;
   }
 }
@@ -90,13 +82,12 @@ async function seedSlots() {
 // Run the seed function
 seedSlots()
   .then(async () => {
-    console.log("\n✅ Seed script completed successfully!");
+    console.log("\n Seed script completed successfully!");
     await prisma.$disconnect();
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("\n❌ Seed script failed:", error);
+    console.error("\n Seed script failed:", error);
     await prisma.$disconnect();
     process.exit(1);
   });
-

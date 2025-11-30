@@ -12,6 +12,7 @@ import appointmentRoutes from "./modules/appointment/appointment.routes";
 import rawBodyMiddleware from "./middleware/rawBody";
 import { razorpayWebhookHandler } from "./modules/payment/payment.controller";
 import paymentRoutes from "./modules/payment/payment.routes";
+import adminRoutes from "./modules/admin/admin.routes";
 
 dotenv.config();
 
@@ -20,18 +21,26 @@ const app = express();
 
 app.use(cookieParser());
 
-app.use(attachUser);
-
-app.post("/api/payment/webhook", rawBodyMiddleware, razorpayWebhookHandler);
+// CORS must be applied BEFORE other middleware
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      /^http:\/\/192\.168\.\d+\.\d+:3000$/,
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Set-Cookie"],
+  })
+);
 
 app.use(express.json({ limit: "20mb" }));
 
-app.use(
-  cors({
-    origin: ["http://localhost:3000", /^http:\/\/192\.168\.\d+\.\d+:3000$/],
-    credentials: true,
-  })
-);
+app.use(attachUser);
+
+app.post("/api/payment/webhook", rawBodyMiddleware, razorpayWebhookHandler);
 
 app.get("/api/health", (req: Request, res: Response) => {
   return res.json({ message: "Nutriwell Backend Connected Successfully!" });
@@ -43,6 +52,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/slots", slotRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.use(multerErrorHandler);
 

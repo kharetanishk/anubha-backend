@@ -106,6 +106,27 @@ export class PatientService {
     return updated;
   }
 
+  async linkFilesToPatient(patientId: string, fileIds: string[], userId: string) {
+    // Verify patient belongs to user
+    const patient = await prisma.patientDetials.findFirst({
+      where: { id: patientId, userId },
+    });
+
+    if (!patient) {
+      throw new Error("Patient not found or unauthorized");
+    }
+
+    // Link files to patient
+    if (fileIds.length > 0) {
+      await prisma.file.updateMany({
+        where: { id: { in: fileIds } },
+        data: { patientId },
+      });
+    }
+
+    return { success: true, message: "Files linked successfully" };
+  }
+
   async deleteFile(fileId: string, requester: { id: string; role: string }) {
     const file = await prisma.file.findUnique({
       where: { id: fileId },

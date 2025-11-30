@@ -14,7 +14,7 @@ export const BowelMovementEnum = z.enum([
   "IRREGULAR",
 ]);
 
-export const FoodPreference = z.enum(["VEG", "NON-VEG", "EGG & VEG"]);
+export const FoodPreference = z.enum(["VEG", "NON_VEG", "EGG_VEG"]);
 
 export const createPatientSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
