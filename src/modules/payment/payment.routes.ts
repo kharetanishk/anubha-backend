@@ -6,12 +6,19 @@ import {
   createOrderHandler,
   verifyPaymentHandler,
   getPlanPriceHandler,
+  getExistingOrderHandler,
 } from "./payment.controller";
 
 const paymentRoutes = Router();
 
 paymentRoutes.post("/order", attachUser, requireAuth, createOrderHandler);
 paymentRoutes.post("/verify", attachUser, requireAuth, verifyPaymentHandler);
+paymentRoutes.get(
+  "/existing-order/:appointmentId",
+  attachUser,
+  requireAuth,
+  getExistingOrderHandler
+);
 paymentRoutes.get("/plan-price", getPlanPriceHandler); // Public endpoint to get plan price
 
 export default paymentRoutes;

@@ -404,8 +404,13 @@ export async function getMyAppointments(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
+    // Only return CONFIRMED appointments for users
+    // Users should only see appointments that have been successfully paid for
     const appointments = await prisma.appointment.findMany({
-      where: { userId: req.user.id },
+      where: {
+        userId: req.user.id,
+        status: "CONFIRMED", // Only show confirmed (paid) appointments
+      },
       orderBy: { startAt: "desc" },
       include: {
         patient: {
@@ -426,6 +431,10 @@ export async function getMyAppointments(req: Request, res: Response) {
         },
       },
     });
+
+    console.log(
+      `[USER APPOINTMENTS] Returning ${appointments.length} confirmed appointments for user ${req.user.id}`
+    );
 
     return res.json({ success: true, appointments });
   } catch (err) {

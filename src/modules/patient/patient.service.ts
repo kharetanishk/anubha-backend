@@ -9,6 +9,16 @@ export class PatientService {
   ) {
     const { fileIds = [], ...rest } = data;
 
+    // Verify user exists in database before creating patient
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new Error("User not found. Please login again or contact support.");
+    }
+
     const exists = await prisma.patientDetials.findFirst({
       where: {
         userId,
@@ -106,7 +116,11 @@ export class PatientService {
     return updated;
   }
 
-  async linkFilesToPatient(patientId: string, fileIds: string[], userId: string) {
+  async linkFilesToPatient(
+    patientId: string,
+    fileIds: string[],
+    userId: string
+  ) {
     // Verify patient belongs to user
     const patient = await prisma.patientDetials.findFirst({
       where: { id: patientId, userId },

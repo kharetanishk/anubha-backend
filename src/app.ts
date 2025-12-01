@@ -13,6 +13,9 @@ import rawBodyMiddleware from "./middleware/rawBody";
 import { razorpayWebhookHandler } from "./modules/payment/payment.controller";
 import paymentRoutes from "./modules/payment/payment.routes";
 import adminRoutes from "./modules/admin/admin.routes";
+import prisma from "./database/prismaclient";
+import { startAppointmentReminderCron } from "./cron/reminder";
+import { testMsg91Connection } from "./services/whatsapp.service";
 
 dotenv.config();
 
@@ -46,6 +49,21 @@ app.get("/api/health", (req: Request, res: Response) => {
   return res.json({ message: "Nutriwell Backend Connected Successfully!" });
 });
 
+// Development-only: Test MSG91 WhatsApp connection
+if (process.env.NODE_ENV !== "production") {
+  app.get("/api/test/whatsapp", async (req: Request, res: Response) => {
+    try {
+      const result = await testMsg91Connection();
+      return res.status(result.success ? 200 : 400).json(result);
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Test failed",
+      });
+    }
+  });
+}
+
 app.use("/api/auth", authRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/upload", uploadRoutes);
@@ -56,6 +74,40 @@ app.use("/api/admin", adminRoutes);
 
 app.use(multerErrorHandler);
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+/**
+ * Check database connection before starting server
+ */
+async function checkDatabaseConnection() {
+  try {
+    await prisma.$connect();
+    console.log("✅ Database is running and connected!");
+
+    // Test query to ensure database is responsive
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("✅ Database connection test successful!");
+  } catch (error) {
+    console.error("❌ Database connection failed:", error);
+    console.error("Please check your DATABASE_URL in .env file");
+    process.exit(1);
+  }
+}
+
+// Start server after database check
+async function startServer() {
+  // Check database connection first
+  await checkDatabaseConnection();
+
+  // Start appointment reminder cron job
+  startAppointmentReminderCron();
+
+  // Start Express server
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+  });
+}
+
+// Start the application
+startServer().catch((error) => {
+  console.error("Failed to start server:", error);
+  process.exit(1);
 });

@@ -12,6 +12,11 @@ function dateRangeFromQuery(dateStr?: string) {
   return { gte: day, lt: nextDay };
 }
 
+/**
+ * Get appointments for admin panel
+ * Shows ALL appointments (PENDING, CONFIRMED, CANCELLED, COMPLETED) by default
+ * Can be filtered by status, date, mode, or search query
+ */
 export async function adminGetAppointments(req: Request, res: Response) {
   try {
     const { date, status, mode, page = "1", limit = "20", q } = req.query;
@@ -21,6 +26,8 @@ export async function adminGetAppointments(req: Request, res: Response) {
     const dateRange = dateRangeFromQuery(date as string | undefined);
     if (dateRange) where.startAt = dateRange;
 
+    // Admin can filter by status, but by default shows all appointments
+    // This allows admin to see PENDING appointments that need attention
     if (status) where.status = status as AppointmentStatus;
 
     if (mode) where.mode = mode as AppointmentMode;

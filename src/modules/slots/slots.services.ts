@@ -20,6 +20,17 @@ export async function getSingleAdminId() {
 }
 
 /**
+ * Get the single admin with all details (including phone)
+ */
+export async function getSingleAdmin() {
+  const admin = await prisma.admin.findFirst();
+  if (!admin) {
+    throw new Error("No admin found in database. Seed the Admin first.");
+  }
+  return admin;
+}
+
+/**
  * Check if a date (YYYY-MM-DD) is a Sunday.
  */
 export function isSunday(dateStr: string) {

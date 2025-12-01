@@ -73,6 +73,18 @@ export class PatientController {
         });
       }
 
+      // Handle foreign key constraint errors (user doesn't exist)
+      if (err.code === "P2003") {
+        console.error(
+          " [BACKEND] Foreign key constraint error - User not found in database:",
+          req.user?.id
+        );
+        return res.status(401).json({
+          success: false,
+          message: "Your account is not valid. Please logout and login again.",
+        });
+      }
+
       // Generic error
       return res.status(500).json({
         success: false,
