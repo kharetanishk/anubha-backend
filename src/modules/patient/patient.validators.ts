@@ -52,20 +52,173 @@ export const createPatientSchema = z.object({
     .transform(Number)
     .refine((n) => !isNaN(n) && n > 0, "Height must be positive"),
 
+  // Optional basic measurements
   neck: z
-    .union([z.string(), z.number()])
-    .transform(Number)
-    .refine((n) => !isNaN(n) && n > 0, "Neck must be positive"),
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Neck must be positive"),
 
   waist: z
-    .union([z.string(), z.number()])
-    .transform(Number)
-    .refine((n) => !isNaN(n) && n > 0, "Waist must be positive"),
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Waist must be positive"),
 
   hip: z
-    .union([z.string(), z.number()])
-    .transform(Number)
-    .refine((n) => !isNaN(n) && n > 0, "Hip must be positive"),
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Hip must be positive"),
+
+  // Optional detailed measurements (for weight loss plan)
+  chest: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Chest must be positive"),
+
+  chestFemale: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Chest female must be positive"),
+
+  normalChestLung: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine(
+      (n) => n === undefined || n > 0,
+      "Normal chest lung must be positive"
+    ),
+
+  expandedChestLungs: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine(
+      (n) => n === undefined || n > 0,
+      "Expanded chest lungs must be positive"
+    ),
+
+  arms: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Arms must be positive"),
+
+  forearms: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Forearms must be positive"),
+
+  wrist: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Wrist must be positive"),
+
+  abdomenUpper: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Abdomen upper must be positive"),
+
+  abdomenLower: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Abdomen lower must be positive"),
+
+  thighUpper: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Thigh upper must be positive"),
+
+  thighLower: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Thigh lower must be positive"),
+
+  calf: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Calf must be positive"),
+
+  ankle: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((val) => {
+      if (val === null || val === undefined || val === "") return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
+    .optional()
+    .refine((n) => n === undefined || n > 0, "Ankle must be positive"),
 
   medicalHistory: z.string().optional(),
   fileIds: z.array(z.string().uuid()).optional(),

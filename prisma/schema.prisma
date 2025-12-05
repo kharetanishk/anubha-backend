@@ -191,9 +191,23 @@ model PatientDetials {
   address             String
   weight              Float
   height              Float
-  neck                Float
-  waist               Float
-  hip                 Float
+  neck                Float?
+  waist               Float?
+  hip                 Float?
+  // Detailed measurements (for weight loss plan)
+  chest               Float?
+  chestFemale         Float?
+  normalChestLung     Float?
+  expandedChestLungs  Float?
+  arms                Float?
+  forearms            Float?
+  wrist               Float?
+  abdomenUpper        Float?
+  abdomenLower        Float?
+  thighUpper          Float?
+  thighLower          Float?
+  calf                Float?
+  ankle               Float?
   medicalHistory      String?
   appointmentConcerns String?
   files               File[]

@@ -3,6 +3,7 @@ import { requireAuth } from "../../middleware/requireAuth";
 import { requireRole } from "../../middleware/requiredRole";
 import { attachUser } from "../../middleware/attachUser";
 import { Role } from "@prisma/client";
+import multer from "multer";
 
 import {
   adminGetAppointments,
@@ -15,6 +16,8 @@ import {
   getDoctorFieldGroups,
   searchDoctorFields,
   saveDoctorSession,
+  saveDoctorNotes,
+  getDoctorNotes,
 } from "./admin.controller";
 
 const adminRoutes = Router();
@@ -97,6 +100,34 @@ adminRoutes.post(
   requireAuth,
   requireRole(Role.ADMIN),
   saveDoctorSession
+);
+
+// Comprehensive Doctor Notes API
+const upload = multer({ storage: multer.memoryStorage() });
+adminRoutes.post(
+  "/doctor-notes",
+  attachUser,
+  requireAuth,
+  requireRole(Role.ADMIN),
+  upload.single("dietChart"), // Handle file upload if present
+  saveDoctorNotes
+);
+
+adminRoutes.get(
+  "/doctor-notes/:appointmentId",
+  attachUser,
+  requireAuth,
+  requireRole(Role.ADMIN),
+  getDoctorNotes
+);
+
+adminRoutes.patch(
+  "/doctor-notes/:appointmentId",
+  attachUser,
+  requireAuth,
+  requireRole(Role.ADMIN),
+  upload.single("dietChart"), // Handle file upload if present
+  saveDoctorNotes // Reuse same handler, it will detect PATCH vs POST
 );
 
 export default adminRoutes;

@@ -436,3 +436,318 @@ export async function saveDoctorSession(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Save comprehensive doctor notes (form data)
+ * POST /api/admin/doctor-notes (full submission)
+ * PATCH /api/admin/doctor-notes/:appointmentId (partial update)
+ */
+export async function saveDoctorNotes(req: Request, res: Response) {
+  const isPatch = req.method === "PATCH";
+  const startTime = Date.now();
+
+  console.log(
+    `[BACKEND] ${req.method} /admin/doctor-notes - ${
+      isPatch ? "Partial update" : "Full submission"
+    }`
+  );
+
+  try {
+    const adminId = (req as any).user?.id;
+    if (!adminId) {
+      console.log("[BACKEND] Unauthorized - no admin ID");
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+      });
+    }
+
+    // Handle both JSON and multipart/form-data
+    let appointmentId: string;
+    let parsedFormData: any;
+    let isDraft: boolean = false;
+
+    // For PATCH, get appointmentId from params
+    if (isPatch) {
+      appointmentId = req.params.appointmentId;
+      console.log(
+        "[BACKEND] PATCH request - Appointment ID from params:",
+        appointmentId
+      );
+    }
+
+    // Check if request is multipart/form-data (has file)
+    if (req.file || (req as any).body?.formData) {
+      // Multipart form data
+      if (!isPatch) {
+        appointmentId = (req as any).body.appointmentId;
+      }
+      const formDataStr = (req as any).body.formData;
+      isDraft =
+        (req as any).body.isDraft === "true" ||
+        (req as any).body.isDraft === true;
+
+      console.log(
+        `[BACKEND] Parsing form data - Is Draft: ${isDraft}, Has File: ${!!req.file}`
+      );
+
+      try {
+        parsedFormData =
+          typeof formDataStr === "string"
+            ? JSON.parse(formDataStr)
+            : formDataStr;
+        console.log(
+          `[BACKEND] Parsed form data keys: ${Object.keys(parsedFormData).join(
+            ", "
+          )}`
+        );
+      } catch (e) {
+        console.error("[BACKEND] Failed to parse formData:", e);
+        return res.status(400).json({
+          success: false,
+          error: "Invalid formData format",
+        });
+      }
+
+      // Handle file upload if present (dietChart)
+      if (req.file) {
+        // File is available in req.file
+        // You can upload to cloudinary or save file path here
+        // For now, we'll store the file info in formData
+        parsedFormData.dietPrescribed = parsedFormData.dietPrescribed || {};
+        parsedFormData.dietPrescribed.dietChartFileName = req.file.originalname;
+        parsedFormData.dietPrescribed.dietChartFileSize = req.file.size;
+        parsedFormData.dietPrescribed.dietChartMimeType = req.file.mimetype;
+      }
+    } else {
+      // Regular JSON request
+      const body = req.body;
+      if (!isPatch) {
+        appointmentId = body.appointmentId;
+      }
+      parsedFormData = body.formData;
+      isDraft = body.isDraft ?? false;
+      console.log(
+        `[BACKEND] JSON request - Is Draft: ${isDraft}, Form Data Keys: ${Object.keys(
+          parsedFormData || {}
+        ).join(", ")}`
+      );
+    }
+
+    if (!appointmentId) {
+      console.error("[BACKEND] Missing appointment ID");
+      return res.status(400).json({
+        success: false,
+        error: "Appointment ID is required",
+      });
+    }
+
+    // Verify appointment exists
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+    });
+
+    if (!appointment) {
+      console.error("[BACKEND] Appointment not found:", appointmentId);
+      return res.status(404).json({
+        success: false,
+        error: "Appointment not found",
+      });
+    }
+
+    // Check if notes already exist for PATCH
+    const existingNotes = await prisma.doctorNotes.findUnique({
+      where: { appointmentId: appointmentId },
+    });
+
+    // For PATCH, merge with existing data
+    if (isPatch && existingNotes) {
+      const existingFormData = (existingNotes.formData as any) || {};
+      // Deep merge partial data with existing data
+      parsedFormData = deepMerge(existingFormData, parsedFormData);
+      console.log(
+        "[BACKEND] PATCH - Merged with existing data. Changed fields:",
+        Object.keys(parsedFormData)
+      );
+    }
+
+    // Log bodyMeasurements data for debugging
+    if (parsedFormData?.bodyMeasurements) {
+      console.log(
+        "[BACKEND] Body Measurements data:",
+        JSON.stringify(parsedFormData.bodyMeasurements, null, 2)
+      );
+    }
+
+    // Upsert doctor notes
+    const doctorNotes = await prisma.doctorNotes.upsert({
+      where: {
+        appointmentId: appointmentId,
+      },
+      update: {
+        formData: parsedFormData as any,
+        isDraft: isDraft ?? false,
+        isCompleted: !isDraft,
+        submittedAt: isDraft ? null : new Date(),
+        updatedBy: adminId,
+        updatedAt: new Date(),
+      },
+      create: {
+        appointmentId: appointmentId,
+        formData: parsedFormData as any,
+        isDraft: isDraft ?? false,
+        isCompleted: !isDraft,
+        submittedAt: isDraft ? null : new Date(),
+        createdBy: adminId,
+        updatedBy: adminId,
+      },
+    });
+
+    // Verify bodyMeasurements was saved
+    if (
+      doctorNotes.formData &&
+      (doctorNotes.formData as any)?.bodyMeasurements
+    ) {
+      console.log(
+        "[SAVE DOCTOR NOTES] Body Measurements saved successfully:",
+        JSON.stringify((doctorNotes.formData as any).bodyMeasurements, null, 2)
+      );
+    } else {
+      console.warn(
+        "[SAVE DOCTOR NOTES] Warning: bodyMeasurements not found in saved formData"
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `[BACKEND] ${
+        isPatch ? "PATCH" : "POST"
+      } completed in ${duration}ms - Notes ID: ${doctorNotes.id}`
+    );
+
+    return res.json({
+      success: true,
+      message: isDraft
+        ? "Doctor notes saved as draft"
+        : isPatch
+        ? "Doctor notes updated successfully"
+        : "Doctor notes saved successfully",
+      doctorNotes: {
+        id: doctorNotes.id,
+        appointmentId: doctorNotes.appointmentId,
+      },
+    });
+  } catch (err: any) {
+    const duration = Date.now() - startTime;
+    console.error(
+      `[BACKEND] Save Doctor Notes Error (${duration}ms):`,
+      err.message || err
+    );
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to save doctor notes",
+    });
+  }
+}
+
+/**
+ * Deep merge utility for merging partial updates with existing form data
+ */
+function deepMerge(target: any, source: any): any {
+  const output = { ...target };
+  if (isObject(target) && isObject(source)) {
+    Object.keys(source).forEach((key) => {
+      if (isObject(source[key])) {
+        if (!(key in target)) {
+          Object.assign(output, { [key]: source[key] });
+        } else {
+          output[key] = deepMerge(target[key], source[key]);
+        }
+      } else {
+        Object.assign(output, { [key]: source[key] });
+      }
+    });
+  }
+  return output;
+}
+
+function isObject(item: any): boolean {
+  return item && typeof item === "object" && !Array.isArray(item);
+}
+
+/**
+ * Get comprehensive doctor notes for an appointment
+ * GET /api/admin/doctor-notes/:appointmentId
+ */
+export async function getDoctorNotes(req: Request, res: Response) {
+  const startTime = Date.now();
+  console.log("[BACKEND] GET /admin/doctor-notes/:appointmentId");
+
+  try {
+    const { appointmentId } = req.params;
+    console.log("[BACKEND] Fetching notes for appointment:", appointmentId);
+
+    if (!appointmentId) {
+      console.error("[BACKEND] Missing appointment ID");
+      return res.status(400).json({
+        success: false,
+        error: "Appointment ID is required",
+      });
+    }
+
+    const doctorNotes = await prisma.doctorNotes.findUnique({
+      where: {
+        appointmentId: appointmentId,
+      },
+    });
+
+    if (!doctorNotes) {
+      const duration = Date.now() - startTime;
+      console.log(`[BACKEND] No notes found for appointment (${duration}ms)`);
+      return res.json({
+        success: true,
+        doctorNotes: null,
+      });
+    }
+
+    // Log bodyMeasurements data for debugging
+    if (
+      doctorNotes.formData &&
+      (doctorNotes.formData as any)?.bodyMeasurements
+    ) {
+      console.log(
+        "[BACKEND] Body Measurements data retrieved:",
+        JSON.stringify((doctorNotes.formData as any).bodyMeasurements, null, 2)
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `[BACKEND] GET completed in ${duration}ms - Notes ID: ${doctorNotes.id}`
+    );
+
+    return res.json({
+      success: true,
+      doctorNotes: {
+        id: doctorNotes.id,
+        appointmentId: doctorNotes.appointmentId,
+        formData: doctorNotes.formData,
+        notes: doctorNotes.notes,
+        isDraft: doctorNotes.isDraft,
+        isCompleted: doctorNotes.isCompleted,
+        createdAt: doctorNotes.createdAt.toISOString(),
+        updatedAt: doctorNotes.updatedAt.toISOString(),
+      },
+    });
+  } catch (err: any) {
+    const duration = Date.now() - startTime;
+    console.error(
+      `[BACKEND] Get Doctor Notes Error (${duration}ms):`,
+      err.message || err
+    );
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to get doctor notes",
+    });
+  }
+}
