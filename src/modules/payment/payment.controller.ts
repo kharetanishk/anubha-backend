@@ -608,14 +608,25 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
 
     // Send WhatsApp notifications after successful payment confirmation
     // This runs outside the transaction to avoid blocking payment confirmation
+    console.log("==========================================");
+    console.log("[PAYMENT] Starting WhatsApp notification process...");
+    console.log("  Appointment ID:", appointment.id);
+    console.log("  Patient Phone:", appointment.patient?.phone || "Not found");
+    console.log("  Doctor Phone:", appointment.doctor?.phone || "Not found");
+    console.log("==========================================");
+
     try {
       await sendWhatsAppNotifications(appointment, orderId, paymentId);
+      console.log("[PAYMENT] ✅ WhatsApp notification process completed");
     } catch (whatsappError: any) {
       // Log error but don't fail the payment confirmation
+      console.error("==========================================");
       console.error(
-        "[PAYMENT] WhatsApp notification failed (non-blocking):",
-        whatsappError.message
+        "[PAYMENT] ❌ WhatsApp notification failed (non-blocking):"
       );
+      console.error("  Error:", whatsappError.message);
+      console.error("  Stack:", whatsappError.stack);
+      console.error("==========================================");
     }
 
     return res.json({
@@ -797,73 +808,138 @@ async function sendWhatsAppNotifications(
   paymentId: string
 ) {
   try {
-    console.log("[WHATSAPP] Sending confirmation notifications...");
+    console.log("==========================================");
+    console.log(
+      "[WHATSAPP CONFIRMATION] Sending confirmation notifications..."
+    );
+    console.log("  Appointment ID:", appointment.id);
+    console.log("  Order ID:", orderId);
+    console.log("  Payment ID:", paymentId);
+    console.log("  Appointment Status: CONFIRMED");
+    console.log("  Slot Booked: Yes");
+    console.log("==========================================");
 
     // Get patient phone number
     const patientPhone = appointment.patient?.phone;
+    const patientName = appointment.patient?.name || "Patient";
+
     if (!patientPhone) {
       console.warn(
-        "[WHATSAPP] Patient phone not found, skipping patient notification"
+        "[WHATSAPP CONFIRMATION] ⚠️ Patient phone not found, skipping patient notification"
       );
+      console.warn("  Patient Name:", patientName);
+      console.warn("  Patient ID:", appointment.patient?.id);
     } else {
+      console.log(
+        "[WHATSAPP CONFIRMATION] Sending patient confirmation message..."
+      );
+      console.log("  Patient Name:", patientName);
+      console.log("  Patient Phone:", patientPhone);
+
       // Send patient confirmation message
       // Note: body_1 is automatically set to patient phone number (type: "numbers") in sendPatientConfirmationMessage
       const patientResult = await sendPatientConfirmationMessage(patientPhone);
 
       if (patientResult.success) {
-        console.log("[WHATSAPP] ✅ Patient notification sent:", patientPhone);
-      } else {
-        console.error(
-          "[WHATSAPP] ❌ Patient notification failed:",
-          patientResult.error
+        console.log("==========================================");
+        console.log(
+          "[WHATSAPP CONFIRMATION] ✅ Patient notification sent successfully"
         );
+        console.log("  Patient Phone:", patientPhone);
+        console.log("  Patient Name:", patientName);
+        console.log("  Template: patient");
+        console.log("==========================================");
+      } else {
+        console.error("==========================================");
+        console.error("[WHATSAPP CONFIRMATION] ❌ Patient notification failed");
+        console.error("  Patient Phone:", patientPhone);
+        console.error("  Error:", patientResult.error);
+        console.error("==========================================");
       }
     }
 
     // Get doctor phone number
     const doctorPhone = appointment.doctor?.phone;
+    const doctorName = appointment.doctor?.name || "Doctor";
+
     if (!doctorPhone) {
+      console.log(
+        "[WHATSAPP CONFIRMATION] Doctor phone not found in appointment, trying admin fallback..."
+      );
       // Fallback: get admin phone from getSingleAdmin
       try {
         const admin = await getSingleAdmin();
         const adminPhone = admin.phone;
+        const adminName = admin.name || "Admin";
 
         if (adminPhone) {
+          console.log(
+            "[WHATSAPP CONFIRMATION] Sending doctor notification (using admin phone)..."
+          );
+          console.log("  Admin Name:", adminName);
+          console.log("  Admin Phone:", adminPhone);
+
           const doctorResult = await sendDoctorNotificationMessage(adminPhone);
           if (doctorResult.success) {
-            console.log("[WHATSAPP] ✅ Doctor notification sent:", adminPhone);
-          } else {
-            console.error(
-              "[WHATSAPP] ❌ Doctor notification failed:",
-              doctorResult.error
+            console.log("==========================================");
+            console.log(
+              "[WHATSAPP CONFIRMATION] ✅ Doctor notification sent successfully"
             );
+            console.log("  Admin Phone:", adminPhone);
+            console.log("  Admin Name:", adminName);
+            console.log("  Template: testing_nut");
+            console.log("==========================================");
+          } else {
+            console.error("==========================================");
+            console.error(
+              "[WHATSAPP CONFIRMATION] ❌ Doctor notification failed"
+            );
+            console.error("  Admin Phone:", adminPhone);
+            console.error("  Error:", doctorResult.error);
+            console.error("==========================================");
           }
         } else {
           console.warn(
-            "[WHATSAPP] Doctor phone not found, skipping doctor notification"
+            "[WHATSAPP CONFIRMATION] ⚠️ Admin phone not found, skipping doctor notification"
           );
         }
       } catch (adminError: any) {
-        console.error(
-          "[WHATSAPP] Failed to get admin phone:",
-          adminError.message
-        );
+        console.error("==========================================");
+        console.error("[WHATSAPP CONFIRMATION] ❌ Failed to get admin phone");
+        console.error("  Error:", adminError.message);
+        console.error("==========================================");
       }
     } else {
+      console.log("[WHATSAPP CONFIRMATION] Sending doctor notification...");
+      console.log("  Doctor Name:", doctorName);
+      console.log("  Doctor Phone:", doctorPhone);
+
       const doctorResult = await sendDoctorNotificationMessage(doctorPhone);
       if (doctorResult.success) {
-        console.log("[WHATSAPP] ✅ Doctor notification sent:", doctorPhone);
-      } else {
-        console.error(
-          "[WHATSAPP] ❌ Doctor notification failed:",
-          doctorResult.error
+        console.log("==========================================");
+        console.log(
+          "[WHATSAPP CONFIRMATION] ✅ Doctor notification sent successfully"
         );
+        console.log("  Doctor Phone:", doctorPhone);
+        console.log("  Doctor Name:", doctorName);
+        console.log("  Template: testing_nut");
+        console.log("==========================================");
+      } else {
+        console.error("==========================================");
+        console.error("[WHATSAPP CONFIRMATION] ❌ Doctor notification failed");
+        console.error("  Doctor Phone:", doctorPhone);
+        console.error("  Error:", doctorResult.error);
+        console.error("==========================================");
       }
     }
 
-    console.log("[WHATSAPP] Notification process completed");
+    console.log("[WHATSAPP CONFIRMATION] ✅ Notification process completed");
   } catch (error: any) {
-    console.error("[WHATSAPP] Error sending notifications:", error);
+    console.error("==========================================");
+    console.error("[WHATSAPP CONFIRMATION] ❌ Error sending notifications");
+    console.error("  Error:", error.message);
+    console.error("  Stack:", error.stack);
+    console.error("==========================================");
     throw error;
   }
 }

@@ -2,7 +2,7 @@ import prisma from "../../database/prismaclient";
 import crypto from "crypto";
 import { hashOtp, validateOtp, isOtpExpired } from "./utils/validateOtp";
 import { generateToken } from "./utils/token";
-import { AppError } from "../../util/Apperror";
+import { AppError } from "../../util/AppError";
 
 export class AuthService {
   /**

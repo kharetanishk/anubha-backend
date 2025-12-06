@@ -2,7 +2,7 @@ import { Router } from "express";
 import { otpLimiter } from "../../middleware/rateLimit";
 import { authController } from "./auth.controller";
 import { refreshSession } from "./refresh/auth.refresh";
-import { logout } from "./auth.logout";
+import { logout } from "./utils/logout";
 import { validateBody } from "../../middleware/validateRequest";
 
 import {

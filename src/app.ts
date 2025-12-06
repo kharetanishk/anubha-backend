@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
-import uploadRoutes from "./routes/uploadRoutes";
+import uploadRoutes from "./modules/upload/upload.routes";
 import { multerErrorHandler } from "./middleware/multerErrorhandler";
 import authRoutes from "./modules/auth/auth.routes";
 import patientRoutes from "./modules/patient/patient.routes";
@@ -16,6 +16,7 @@ import adminRoutes from "./modules/admin/admin.routes";
 import prisma from "./database/prismaclient";
 import { startAppointmentReminderCron } from "./cron/reminder";
 import { testMsg91Connection } from "./services/whatsapp.service";
+import { apiLogger } from "./middleware/apiLogger";
 
 dotenv.config();
 
@@ -41,6 +42,9 @@ app.use(
 );
 
 app.use(express.json({ limit: "20mb" }));
+
+// API Logger middleware - logs all API calls for debugging
+app.use(apiLogger);
 
 app.use(attachUser);
 

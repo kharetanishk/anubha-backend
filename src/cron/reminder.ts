@@ -79,20 +79,41 @@ async function checkAndSendReminders() {
 
     if (upcomingAppointments.length === 0) {
       // No appointments to remind (this is normal, don't log every minute)
+      // Only log occasionally to show the cron is running
+      if (Math.random() < 0.01) {
+        // Log ~1% of the time
+        console.log(
+          "[CRON REMINDER] No appointments to remind (cron is running)"
+        );
+      }
       return;
     }
 
+    console.log("==========================================");
     console.log(
-      `[CRON] Found ${upcomingAppointments.length} appointment(s) to remind`
+      `[CRON REMINDER] Found ${upcomingAppointments.length} appointment(s) to remind`
     );
+    console.log("  Current Time:", now.toISOString());
+    console.log("  Target Time (1 hour later):", oneHourLater.toISOString());
+    console.log("  Time Window: ±1 minute around 1 hour mark");
+    console.log("==========================================");
 
     // Get admin/doctor phone for fallback
     let adminPhone: string | null = null;
     try {
       const admin = await getSingleAdmin();
       adminPhone = admin.phone;
-    } catch (error) {
-      console.warn("[CRON] Could not fetch admin phone for reminders");
+      console.log(
+        "[CRON REMINDER] Admin phone fetched for fallback:",
+        adminPhone
+      );
+    } catch (error: any) {
+      console.warn("==========================================");
+      console.warn(
+        "[CRON REMINDER] ⚠️ Could not fetch admin phone for reminders"
+      );
+      console.warn("  Error:", error.message);
+      console.warn("==========================================");
     }
 
     // Process each appointment
@@ -100,15 +121,28 @@ async function checkAndSendReminders() {
       try {
         await sendReminderForAppointment(appointment, adminPhone);
       } catch (error: any) {
+        console.error("==========================================");
         console.error(
-          `[CRON] Failed to send reminder for appointment ${appointment.id}:`,
-          error.message
+          `[CRON REMINDER] ❌ Failed to send reminder for appointment ${appointment.id}`
         );
+        console.error("  Error:", error.message);
+        console.error("  Stack:", error.stack);
+        console.error("==========================================");
         // Continue with other appointments even if one fails
       }
     }
+
+    console.log("==========================================");
+    console.log(
+      `[CRON REMINDER] ✅ Completed processing ${upcomingAppointments.length} appointment(s)`
+    );
+    console.log("==========================================");
   } catch (error: any) {
-    console.error("[CRON] Error checking reminders:", error);
+    console.error("==========================================");
+    console.error("[CRON REMINDER] ❌ Error checking reminders");
+    console.error("  Error:", error.message);
+    console.error("  Stack:", error.stack);
+    console.error("==========================================");
   }
 }
 
@@ -123,59 +157,97 @@ async function sendReminderForAppointment(
   const patientName = appointment.patient?.name || "Patient";
   const patientPhone = appointment.patient?.phone;
   const doctorPhone = appointment.doctor?.phone || adminPhone;
+  const appointmentStartAt = appointment.slot?.startAt || appointment.startAt;
+  const appointmentMode = appointment.slot?.mode || appointment.mode;
 
-  console.log(`[CRON] Sending reminder for appointment ${appointmentId}`);
+  console.log("==========================================");
+  console.log(
+    `[CRON REMINDER] Sending reminder for appointment ${appointmentId}`
+  );
+  console.log("  Appointment ID:", appointmentId);
+  console.log("  Appointment Start:", appointmentStartAt);
+  console.log("  Appointment Mode:", appointmentMode);
+  console.log("  Patient Name:", patientName);
+  console.log("  Patient Phone:", patientPhone || "Not found");
+  console.log("  Doctor Phone:", doctorPhone || "Not found");
+  console.log("==========================================");
 
   // Send patient reminder
   if (patientPhone) {
     try {
+      console.log("[CRON REMINDER] Sending patient reminder...");
       // Send patient reminder
       // Note: body_1 is automatically set to patient phone number (type: "numbers") in sendPatientConfirmationMessage
       const patientResult = await sendPatientConfirmationMessage(patientPhone);
 
       if (patientResult.success) {
-        console.log(
-          `[CRON] ✅ Patient reminder sent: ${patientPhone} (Appointment: ${appointmentId})`
-        );
+        console.log("==========================================");
+        console.log(`[CRON REMINDER] ✅ Patient reminder sent successfully`);
+        console.log("  Appointment ID:", appointmentId);
+        console.log("  Patient Phone:", patientPhone);
+        console.log("  Patient Name:", patientName);
+        console.log("  Template: patient");
+        console.log("==========================================");
       } else {
-        console.error(
-          `[CRON] ❌ Patient reminder failed: ${patientResult.error} (Appointment: ${appointmentId})`
-        );
+        console.error("==========================================");
+        console.error(`[CRON REMINDER] ❌ Patient reminder failed`);
+        console.error("  Appointment ID:", appointmentId);
+        console.error("  Patient Phone:", patientPhone);
+        console.error("  Error:", patientResult.error);
+        console.error("==========================================");
       }
     } catch (error: any) {
-      console.error(
-        `[CRON] Error sending patient reminder: ${error.message} (Appointment: ${appointmentId})`
-      );
+      console.error("==========================================");
+      console.error(`[CRON REMINDER] ❌ Error sending patient reminder`);
+      console.error("  Appointment ID:", appointmentId);
+      console.error("  Patient Phone:", patientPhone);
+      console.error("  Error:", error.message);
+      console.error("  Stack:", error.stack);
+      console.error("==========================================");
     }
   } else {
-    console.warn(
-      `[CRON] Patient phone not found for appointment ${appointmentId}`
-    );
+    console.warn("==========================================");
+    console.warn(`[CRON REMINDER] ⚠️ Patient phone not found`);
+    console.warn("  Appointment ID:", appointmentId);
+    console.warn("  Patient Name:", patientName);
+    console.warn("==========================================");
   }
 
   // Send doctor reminder
   if (doctorPhone) {
     try {
+      console.log("[CRON REMINDER] Sending doctor reminder...");
       const doctorResult = await sendDoctorNotificationMessage(doctorPhone);
 
       if (doctorResult.success) {
-        console.log(
-          `[CRON] ✅ Doctor reminder sent: ${doctorPhone} (Appointment: ${appointmentId})`
-        );
+        console.log("==========================================");
+        console.log(`[CRON REMINDER] ✅ Doctor reminder sent successfully`);
+        console.log("  Appointment ID:", appointmentId);
+        console.log("  Doctor Phone:", doctorPhone);
+        console.log("  Template: testing_nut");
+        console.log("==========================================");
       } else {
-        console.error(
-          `[CRON] ❌ Doctor reminder failed: ${doctorResult.error} (Appointment: ${appointmentId})`
-        );
+        console.error("==========================================");
+        console.error(`[CRON REMINDER] ❌ Doctor reminder failed`);
+        console.error("  Appointment ID:", appointmentId);
+        console.error("  Doctor Phone:", doctorPhone);
+        console.error("  Error:", doctorResult.error);
+        console.error("==========================================");
       }
     } catch (error: any) {
-      console.error(
-        `[CRON] Error sending doctor reminder: ${error.message} (Appointment: ${appointmentId})`
-      );
+      console.error("==========================================");
+      console.error(`[CRON REMINDER] ❌ Error sending doctor reminder`);
+      console.error("  Appointment ID:", appointmentId);
+      console.error("  Doctor Phone:", doctorPhone);
+      console.error("  Error:", error.message);
+      console.error("  Stack:", error.stack);
+      console.error("==========================================");
     }
   } else {
-    console.warn(
-      `[CRON] Doctor phone not found for appointment ${appointmentId}`
-    );
+    console.warn("==========================================");
+    console.warn(`[CRON REMINDER] ⚠️ Doctor phone not found`);
+    console.warn("  Appointment ID:", appointmentId);
+    console.warn("==========================================");
   }
 
   // Mark reminder as sent
@@ -184,12 +256,17 @@ async function sendReminderForAppointment(
       where: { id: appointmentId },
       data: { reminderSent: true },
     });
-    console.log(
-      `[CRON] ✅ Reminder marked as sent for appointment ${appointmentId}`
-    );
+    console.log("==========================================");
+    console.log(`[CRON REMINDER] ✅ Reminder marked as sent`);
+    console.log("  Appointment ID:", appointmentId);
+    console.log("  reminderSent: true");
+    console.log("==========================================");
   } catch (error: any) {
-    console.error(
-      `[CRON] Failed to mark reminder as sent: ${error.message} (Appointment: ${appointmentId})`
-    );
+    console.error("==========================================");
+    console.error(`[CRON REMINDER] ❌ Failed to mark reminder as sent`);
+    console.error("  Appointment ID:", appointmentId);
+    console.error("  Error:", error.message);
+    console.error("  Stack:", error.stack);
+    console.error("==========================================");
   }
 }

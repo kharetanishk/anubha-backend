@@ -1,7 +1,7 @@
 import { Router } from "express";
-import imageUpload from "../middleware/multerConfig";
-import { uploadImageToCloudinary } from "../controllers/uploadController";
-import { requireAuth } from "../middleware/requireAuth";
+import imageUpload from "../../middleware/multerConfig";
+import { uploadImageToCloudinary } from "./upload.controller";
+import { requireAuth } from "../../middleware/requireAuth";
 
 const uploadRoutes = Router();
 

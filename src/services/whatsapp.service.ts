@@ -384,11 +384,13 @@ export async function sendWhatsAppMessage(
       console.log("  - Response:", JSON.stringify(response.data, null, 2));
     }
 
-    console.log("[WHATSAPP] Message sent successfully:", {
-      to: formattedPhone,
-      template: templateName,
-      responseStatus: response.status,
-    });
+    console.log("==========================================");
+    console.log("[WHATSAPP API] ✅ Message sent successfully");
+    console.log("  To:", formattedPhone);
+    console.log("  Template:", templateName);
+    console.log("  Response Status:", response.status);
+    console.log("  Response Data:", JSON.stringify(response.data, null, 2));
+    console.log("==========================================");
 
     return {
       success: true,
@@ -434,14 +436,15 @@ export async function sendWhatsAppMessage(
       }
     }
 
-    console.error("[WHATSAPP] Failed to send message:", {
-      to,
-      template: templateName,
-      status: errorStatus,
-      error: errorData,
-      errorMessage: errorMessage,
-      authKeyConfigured: !!MSG91_AUTH_KEY,
-    });
+    console.error("==========================================");
+    console.error("[WHATSAPP API] ❌ Failed to send message");
+    console.error("  To:", to);
+    console.error("  Template:", templateName);
+    console.error("  Status Code:", errorStatus);
+    console.error("  Error Message:", errorMessage);
+    console.error("  Error Data:", JSON.stringify(errorData, null, 2));
+    console.error("  Auth Key Configured:", !!MSG91_AUTH_KEY);
+    console.error("==========================================");
 
     // Provide more specific error messages
     if (errorStatus === 401) {

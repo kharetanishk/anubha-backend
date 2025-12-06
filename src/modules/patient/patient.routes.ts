@@ -1,17 +1,17 @@
 import { Router } from "express";
-import { patientController } from "./patient.contoller";
+import { patientController } from "./patient.controller";
 import { validateBody } from "../../middleware/validateRequest";
 import { createPatientSchema } from "./patient.validators";
 import { requireAuth } from "../../middleware/requireAuth";
 import { requireRole } from "../../middleware/requiredRole";
 import { attachUser } from "../../middleware/attachUser";
 import { patientLimiter } from "../../middleware/rateLimit";
-import { createRecallSchema } from "./recall_form/recall.validation";
+import { createRecallSchema } from "./recall/recall.validation";
 import {
   createRecallHandler,
   deleteRecallEntryHandler,
   getRecallHandler,
-} from "./recall_form/recall.controller";
+} from "./recall/recall.controller";
 
 const patientRoutes = Router();
 

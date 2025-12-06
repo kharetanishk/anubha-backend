@@ -2,6 +2,11 @@ import prisma from "../../database/prismaclient";
 import { AppointmentStatus } from "@prisma/client";
 import { AppointmentMode } from "@prisma/client";
 import { Request, Response } from "express";
+import {
+  sendPatientConfirmationMessage,
+  sendDoctorNotificationMessage,
+} from "../../services/whatsapp.service";
+import { getSingleAdmin } from "../slots/slots.services";
 
 function dateRangeFromQuery(dateStr?: string) {
   if (!dateStr) return undefined;
@@ -147,6 +152,54 @@ export async function adminUpdateAppointmentStatus(
     });
 
     if (slotUpdate) await slotUpdate;
+
+    // Send WhatsApp notifications if appointment is being confirmed
+    // This handles manual confirmation by admin (not just payment flow)
+    if (status === "CONFIRMED" && current !== "CONFIRMED") {
+      console.log("==========================================");
+      console.log(
+        "[ADMIN] Appointment manually confirmed, sending WhatsApp notifications..."
+      );
+      console.log("  Appointment ID:", id);
+      console.log("  Previous Status:", current);
+      console.log("  New Status:", status);
+      console.log("==========================================");
+
+      // Fetch appointment with patient and doctor details for notifications
+      const appointmentWithDetails = await prisma.appointment.findUnique({
+        where: { id },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+            },
+          },
+          doctor: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      if (appointmentWithDetails) {
+        // Send notifications asynchronously (non-blocking)
+        sendWhatsAppNotificationsForAdminConfirmation(
+          appointmentWithDetails
+        ).catch((error: any) => {
+          console.error(
+            "[ADMIN] WhatsApp notification failed (non-blocking):",
+            error.message
+          );
+        });
+      }
+    }
 
     return res.json({
       success: true,
@@ -463,7 +516,7 @@ export async function saveDoctorNotes(req: Request, res: Response) {
     }
 
     // Handle both JSON and multipart/form-data
-    let appointmentId: string;
+    let appointmentId: string | undefined;
     let parsedFormData: any;
     let isDraft: boolean = false;
 
@@ -534,6 +587,7 @@ export async function saveDoctorNotes(req: Request, res: Response) {
       );
     }
 
+    // Validate appointmentId is present
     if (!appointmentId) {
       console.error("[BACKEND] Missing appointment ID");
       return res.status(400).json({
@@ -542,13 +596,16 @@ export async function saveDoctorNotes(req: Request, res: Response) {
       });
     }
 
+    // TypeScript now knows appointmentId is defined after the check above
+    const validatedAppointmentId: string = appointmentId;
+
     // Verify appointment exists
     const appointment = await prisma.appointment.findUnique({
-      where: { id: appointmentId },
+      where: { id: validatedAppointmentId },
     });
 
     if (!appointment) {
-      console.error("[BACKEND] Appointment not found:", appointmentId);
+      console.error("[BACKEND] Appointment not found:", validatedAppointmentId);
       return res.status(404).json({
         success: false,
         error: "Appointment not found",
@@ -557,7 +614,7 @@ export async function saveDoctorNotes(req: Request, res: Response) {
 
     // Check if notes already exist for PATCH
     const existingNotes = await prisma.doctorNotes.findUnique({
-      where: { appointmentId: appointmentId },
+      where: { appointmentId: validatedAppointmentId },
     });
 
     // For PATCH, merge with existing data
@@ -582,7 +639,7 @@ export async function saveDoctorNotes(req: Request, res: Response) {
     // Upsert doctor notes
     const doctorNotes = await prisma.doctorNotes.upsert({
       where: {
-        appointmentId: appointmentId,
+        appointmentId: validatedAppointmentId,
       },
       update: {
         formData: parsedFormData as any,
@@ -593,7 +650,7 @@ export async function saveDoctorNotes(req: Request, res: Response) {
         updatedAt: new Date(),
       },
       create: {
-        appointmentId: appointmentId,
+        appointmentId: validatedAppointmentId,
         formData: parsedFormData as any,
         isDraft: isDraft ?? false,
         isCompleted: !isDraft,
@@ -673,6 +730,122 @@ function deepMerge(target: any, source: any): any {
 
 function isObject(item: any): boolean {
   return item && typeof item === "object" && !Array.isArray(item);
+}
+
+/**
+ * Send WhatsApp notifications when admin manually confirms an appointment
+ */
+async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
+  try {
+    console.log("==========================================");
+    console.log("[ADMIN WHATSAPP] Sending confirmation notifications...");
+    console.log("  Appointment ID:", appointment.id);
+    console.log("  Appointment Status: CONFIRMED (by admin)");
+    console.log("==========================================");
+
+    // Get patient phone number
+    const patientPhone = appointment.patient?.phone;
+    const patientName = appointment.patient?.name || "Patient";
+
+    if (!patientPhone) {
+      console.warn(
+        "[ADMIN WHATSAPP] ⚠️ Patient phone not found, skipping patient notification"
+      );
+    } else {
+      console.log("[ADMIN WHATSAPP] Sending patient confirmation message...");
+      console.log("  Patient Name:", patientName);
+      console.log("  Patient Phone:", patientPhone);
+
+      const patientResult = await sendPatientConfirmationMessage(patientPhone);
+
+      if (patientResult.success) {
+        console.log("==========================================");
+        console.log(
+          "[ADMIN WHATSAPP] ✅ Patient notification sent successfully"
+        );
+        console.log("  Patient Phone:", patientPhone);
+        console.log("  Patient Name:", patientName);
+        console.log("==========================================");
+      } else {
+        console.error("==========================================");
+        console.error("[ADMIN WHATSAPP] ❌ Patient notification failed");
+        console.error("  Patient Phone:", patientPhone);
+        console.error("  Error:", patientResult.error);
+        console.error("==========================================");
+      }
+    }
+
+    // Get doctor phone number
+    const doctorPhone = appointment.doctor?.phone;
+    const doctorName = appointment.doctor?.name || "Doctor";
+
+    if (!doctorPhone) {
+      console.log(
+        "[ADMIN WHATSAPP] Doctor phone not found in appointment, trying admin fallback..."
+      );
+      try {
+        const admin = await getSingleAdmin();
+        const adminPhone = admin.phone;
+        const adminName = admin.name || "Admin";
+
+        if (adminPhone) {
+          console.log(
+            "[ADMIN WHATSAPP] Sending doctor notification (using admin phone)..."
+          );
+          const doctorResult = await sendDoctorNotificationMessage(adminPhone);
+          if (doctorResult.success) {
+            console.log("==========================================");
+            console.log(
+              "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
+            );
+            console.log("  Admin Phone:", adminPhone);
+            console.log("==========================================");
+          } else {
+            console.error("==========================================");
+            console.error("[ADMIN WHATSAPP] ❌ Doctor notification failed");
+            console.error("  Admin Phone:", adminPhone);
+            console.error("  Error:", doctorResult.error);
+            console.error("==========================================");
+          }
+        } else {
+          console.warn(
+            "[ADMIN WHATSAPP] ⚠️ Admin phone not found, skipping doctor notification"
+          );
+        }
+      } catch (adminError: any) {
+        console.error(
+          "[ADMIN WHATSAPP] ❌ Failed to get admin phone:",
+          adminError.message
+        );
+      }
+    } else {
+      console.log("[ADMIN WHATSAPP] Sending doctor notification...");
+      const doctorResult = await sendDoctorNotificationMessage(doctorPhone);
+      if (doctorResult.success) {
+        console.log("==========================================");
+        console.log(
+          "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
+        );
+        console.log("  Doctor Phone:", doctorPhone);
+        console.log("==========================================");
+      } else {
+        console.error("==========================================");
+        console.error("[ADMIN WHATSAPP] ❌ Doctor notification failed");
+        console.error("  Doctor Phone:", doctorPhone);
+        console.error("  Error:", doctorResult.error);
+        console.error("==========================================");
+      }
+    }
+
+    console.log("[ADMIN WHATSAPP] ✅ Notification process completed");
+  } catch (error: any) {
+    console.error("==========================================");
+    console.error("[ADMIN WHATSAPP] ❌ Error sending notifications");
+    console.error("  Error:", error.message);
+    console.error("  Stack:", error.stack);
+    console.error("==========================================");
+    throw error;
+  }
 }
 
 /**

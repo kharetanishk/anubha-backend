@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import cloudinary from "../util/cloudinary";
-import prisma from "../database/prismaclient";
+import cloudinary from "../../util/cloudinary";
+import prisma from "../../database/prismaclient";
 
 export const uploadImageToCloudinary = async (req: Request, res: Response) => {
   try {
