@@ -2,22 +2,22 @@ import cron from "node-cron";
 import prisma from "../database/prismaclient";
 import { getSingleAdmin } from "../modules/slots/slots.services";
 import {
-  sendPatientConfirmationMessage,
+  sendReminderMessage,
   sendDoctorNotificationMessage,
 } from "../services/whatsapp.service";
 
 /**
  * Appointment Reminder Cron Job
- * Runs every minute to check for appointments occurring in 1 hour
- * Sends WhatsApp reminders to both patient and doctor
+ * Runs every 10 minutes to check for appointments with reminderTime in the current window
+ * Sends SMS/WhatsApp reminders to patients 1 hour before their appointment
  */
 export function startAppointmentReminderCron() {
   console.log(
-    "[CRON] Starting appointment reminder cron job (runs every minute)"
+    "[CRON] Starting appointment reminder cron job (runs every 10 minutes)"
   );
 
-  // Run every minute: * * * * *
-  cron.schedule("* * * * *", async () => {
+  // Run every 10 minutes: */10 * * * *
+  cron.schedule("*/10 * * * *", async () => {
     try {
       await checkAndSendReminders();
     } catch (error: any) {
@@ -30,24 +30,37 @@ export function startAppointmentReminderCron() {
 
 /**
  * Check for upcoming appointments and send reminders
+ * Uses reminderTime field to find appointments that need reminders in the current 10-minute window
  */
 async function checkAndSendReminders() {
   try {
-    // Calculate time range: appointments starting in exactly 1 hour
+    // Get current time and round down to minute (seconds & ms = 0)
     const now = new Date();
-    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000); // +1 hour
+    now.setSeconds(0, 0);
+
+    // Calculate time window: reminderTime should be between (now - 10 minutes) and now
+    // This makes it robust against small drifts - reminders are sent once even if cron runs slightly late
+    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+
+    console.log("==========================================");
+    console.log("[CRON REMINDER] Checking for appointments needing reminders");
+    console.log("  Current Time:", now.toISOString());
+    console.log("  Window Start:", tenMinutesAgo.toISOString());
+    console.log("  Window End:", now.toISOString());
+    console.log("==========================================");
 
     // Find appointments that:
     // 1. Are CONFIRMED
-    // 2. Start in exactly 1 hour (within 1 minute window)
-    // 3. Reminder not already sent
+    // 2. Reminder not already sent
+    // 3. Have reminderTime within the current window (between 10 minutes ago and now)
+    // 4. reminderTime is not null (appointment has a valid slot time)
     const upcomingAppointments = await prisma.appointment.findMany({
       where: {
         status: "CONFIRMED",
         reminderSent: false,
-        startAt: {
-          gte: new Date(oneHourLater.getTime() - 60 * 1000), // 1 minute before 1 hour
-          lte: new Date(oneHourLater.getTime() + 60 * 1000), // 1 minute after 1 hour
+        reminderTime: {
+          gte: tenMinutesAgo,
+          lte: now,
         },
       },
       include: {
@@ -78,12 +91,12 @@ async function checkAndSendReminders() {
     });
 
     if (upcomingAppointments.length === 0) {
-      // No appointments to remind (this is normal, don't log every minute)
+      // No appointments to remind (this is normal, don't log every run)
       // Only log occasionally to show the cron is running
-      if (Math.random() < 0.01) {
-        // Log ~1% of the time
+      if (Math.random() < 0.1) {
+        // Log ~10% of the time (less frequent since we run every 10 min instead of every minute)
         console.log(
-          "[CRON REMINDER] No appointments to remind (cron is running)"
+          "[CRON REMINDER] No appointments to remind in current window (cron is running)"
         );
       }
       return;
@@ -94,8 +107,12 @@ async function checkAndSendReminders() {
       `[CRON REMINDER] Found ${upcomingAppointments.length} appointment(s) to remind`
     );
     console.log("  Current Time:", now.toISOString());
-    console.log("  Target Time (1 hour later):", oneHourLater.toISOString());
-    console.log("  Time Window: ±1 minute around 1 hour mark");
+    console.log(
+      "  Reminder Time Window:",
+      tenMinutesAgo.toISOString(),
+      "to",
+      now.toISOString()
+    );
     console.log("==========================================");
 
     // Get admin/doctor phone for fallback
@@ -172,13 +189,37 @@ async function sendReminderForAppointment(
   console.log("  Doctor Phone:", doctorPhone || "Not found");
   console.log("==========================================");
 
+  // Get slot time for reminder message
+  const slotTime = appointment.slot?.startAt || appointment.startAt;
+  if (!slotTime) {
+    console.warn("==========================================");
+    console.warn(`[CRON REMINDER] ⚠️ Slot time not found`);
+    console.warn("  Appointment ID:", appointmentId);
+    console.warn("==========================================");
+    // Mark as sent to prevent retrying without slot time
+    await prisma.appointment.updateMany({
+      where: {
+        id: appointmentId,
+        reminderSent: false,
+      },
+      data: { reminderSent: true },
+    });
+    return;
+  }
+
+  const slotTimeDate = new Date(slotTime);
+
   // Send patient reminder
+  let reminderSentSuccessfully = false;
+
   if (patientPhone) {
     try {
       console.log("[CRON REMINDER] Sending patient reminder...");
-      // Send patient reminder
-      // Note: body_1 is automatically set to patient phone number (type: "numbers") in sendPatientConfirmationMessage
-      const patientResult = await sendPatientConfirmationMessage(patientPhone);
+      // Send reminder message using the reminder template
+      const patientResult = await sendReminderMessage(
+        patientPhone,
+        slotTimeDate
+      );
 
       if (patientResult.success) {
         console.log("==========================================");
@@ -186,8 +227,10 @@ async function sendReminderForAppointment(
         console.log("  Appointment ID:", appointmentId);
         console.log("  Patient Phone:", patientPhone);
         console.log("  Patient Name:", patientName);
-        console.log("  Template: patient");
+        console.log("  Slot Time:", slotTimeDate.toISOString());
+        console.log("  Template: Reminder (1 hour before)");
         console.log("==========================================");
+        reminderSentSuccessfully = true;
       } else {
         console.error("==========================================");
         console.error(`[CRON REMINDER] ❌ Patient reminder failed`);
@@ -195,6 +238,7 @@ async function sendReminderForAppointment(
         console.error("  Patient Phone:", patientPhone);
         console.error("  Error:", patientResult.error);
         console.error("==========================================");
+        // Don't mark as sent - will retry in next cron run
       }
     } catch (error: any) {
       console.error("==========================================");
@@ -204,6 +248,7 @@ async function sendReminderForAppointment(
       console.error("  Error:", error.message);
       console.error("  Stack:", error.stack);
       console.error("==========================================");
+      // Don't mark as sent - will retry in next cron run
     }
   } else {
     console.warn("==========================================");
@@ -211,9 +256,11 @@ async function sendReminderForAppointment(
     console.warn("  Appointment ID:", appointmentId);
     console.warn("  Patient Name:", patientName);
     console.warn("==========================================");
+    // Mark as sent to prevent retrying without phone number
+    reminderSentSuccessfully = true; // Treat as "sent" to prevent infinite retries
   }
 
-  // Send doctor reminder
+  // Send doctor reminder (non-blocking - doesn't affect patient reminder status)
   if (doctorPhone) {
     try {
       console.log("[CRON REMINDER] Sending doctor reminder...");
@@ -251,42 +298,55 @@ async function sendReminderForAppointment(
   }
 
   // SECURITY: Mark reminder as sent using atomic update to prevent duplicate reminders
+  // Only mark as sent if the patient reminder was successfully sent (or patient phone is missing)
   // Use updateMany with WHERE clause to ensure only one cron instance can mark it as sent
   // This prevents race condition if cron runs twice simultaneously
-  try {
-    const updateResult = await prisma.appointment.updateMany({
-      where: {
-        id: appointmentId,
-        reminderSent: false, // Only update if reminder hasn't been sent yet
-      },
-      data: { reminderSent: true },
-    });
+  if (reminderSentSuccessfully) {
+    try {
+      const updateResult = await prisma.appointment.updateMany({
+        where: {
+          id: appointmentId,
+          reminderSent: false, // Only update if reminder hasn't been sent yet
+        },
+        data: { reminderSent: true },
+      });
 
-    if (updateResult.count > 0) {
-      console.log("==========================================");
-      console.log(`[CRON REMINDER] ✅ Reminder marked as sent (atomic update)`);
-      console.log("  Appointment ID:", appointmentId);
-      console.log("  reminderSent: true");
-      console.log("  Rows updated:", updateResult.count);
-      console.log("==========================================");
-    } else {
-      // Reminder was already sent by another cron instance (race condition handled)
-      console.log("==========================================");
-      console.log(
-        `[CRON REMINDER] ⚠️ Reminder already sent (duplicate prevented)`
-      );
-      console.log("  Appointment ID:", appointmentId);
-      console.log(
-        "  This is normal if cron runs multiple times simultaneously"
-      );
-      console.log("==========================================");
+      if (updateResult.count > 0) {
+        console.log("==========================================");
+        console.log(
+          `[CRON REMINDER] ✅ Reminder marked as sent (atomic update)`
+        );
+        console.log("  Appointment ID:", appointmentId);
+        console.log("  reminderSent: true");
+        console.log("  Rows updated:", updateResult.count);
+        console.log("==========================================");
+      } else {
+        // Reminder was already sent by another cron instance (race condition handled)
+        console.log("==========================================");
+        console.log(
+          `[CRON REMINDER] ⚠️ Reminder already sent (duplicate prevented)`
+        );
+        console.log("  Appointment ID:", appointmentId);
+        console.log(
+          "  This is normal if cron runs multiple times simultaneously"
+        );
+        console.log("==========================================");
+      }
+    } catch (error: any) {
+      console.error("==========================================");
+      console.error(`[CRON REMINDER] ❌ Failed to mark reminder as sent`);
+      console.error("  Appointment ID:", appointmentId);
+      console.error("  Error:", error.message);
+      console.error("  Stack:", error.stack);
+      console.error("==========================================");
     }
-  } catch (error: any) {
-    console.error("==========================================");
-    console.error(`[CRON REMINDER] ❌ Failed to mark reminder as sent`);
-    console.error("  Appointment ID:", appointmentId);
-    console.error("  Error:", error.message);
-    console.error("  Stack:", error.stack);
-    console.error("==========================================");
+  } else {
+    console.log("==========================================");
+    console.log(
+      `[CRON REMINDER] ⚠️ Reminder not marked as sent (will retry next run)`
+    );
+    console.log("  Appointment ID:", appointmentId);
+    console.log("  Reason: Patient reminder failed or patient phone missing");
+    console.log("==========================================");
   }
 }

@@ -537,3 +537,151 @@ export async function sendDoctorNotificationMessage(
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   return sendWhatsAppMessage(doctorPhone, "testing_nut", undefined, "en_US");
 }
+
+/**
+ * Send booking confirmation SMS/WhatsApp message
+ * Uses MSG91_TEMPLATE_BOOKING_CONFIRMATION template or falls back to "patient"
+ */
+export async function sendBookingConfirmationMessage(
+  patientPhone: string,
+  slotTime: Date,
+  variables?: WhatsAppTemplateVariables
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const templateName =
+    process.env.MSG91_TEMPLATE_BOOKING_CONFIRMATION || "patient";
+  const formattedPatientPhone = formatPhoneNumber(patientPhone);
+
+  // Format slot time for template (you may need to adjust format based on template requirements)
+  const slotTimeFormatted = slotTime.toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  });
+
+  const templateVariables: WhatsAppTemplateVariables = {
+    body_1: {
+      type: "numbers",
+      value: formattedPatientPhone,
+    },
+    body_2: {
+      type: "text",
+      value: slotTimeFormatted,
+    },
+    ...variables,
+  };
+
+  return sendWhatsAppMessage(
+    patientPhone,
+    templateName,
+    templateVariables,
+    "en"
+  );
+}
+
+/**
+ * Send reminder SMS/WhatsApp message (1 hour before appointment)
+ * Uses MSG91_TEMPLATE_REMINDER template or falls back to "patient"
+ */
+export async function sendReminderMessage(
+  patientPhone: string,
+  slotTime: Date,
+  variables?: WhatsAppTemplateVariables
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const templateName = process.env.MSG91_TEMPLATE_REMINDER || "patient";
+  const formattedPatientPhone = formatPhoneNumber(patientPhone);
+
+  const slotTimeFormatted = slotTime.toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  });
+
+  const templateVariables: WhatsAppTemplateVariables = {
+    body_1: {
+      type: "numbers",
+      value: formattedPatientPhone,
+    },
+    body_2: {
+      type: "text",
+      value: slotTimeFormatted,
+    },
+    ...variables,
+  };
+
+  return sendWhatsAppMessage(
+    patientPhone,
+    templateName,
+    templateVariables,
+    "en"
+  );
+}
+
+/**
+ * Send last-minute combined confirmation + reminder SMS/WhatsApp message
+ * Uses MSG91_TEMPLATE_LAST_MINUTE template or falls back to "patient"
+ */
+export async function sendLastMinuteConfirmationMessage(
+  patientPhone: string,
+  slotTime: Date,
+  variables?: WhatsAppTemplateVariables
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const templateName = process.env.MSG91_TEMPLATE_LAST_MINUTE || "patient";
+  const formattedPatientPhone = formatPhoneNumber(patientPhone);
+
+  const slotTimeFormatted = slotTime.toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  });
+
+  const templateVariables: WhatsAppTemplateVariables = {
+    body_1: {
+      type: "numbers",
+      value: formattedPatientPhone,
+    },
+    body_2: {
+      type: "text",
+      value: slotTimeFormatted,
+    },
+    ...variables,
+  };
+
+  return sendWhatsAppMessage(
+    patientPhone,
+    templateName,
+    templateVariables,
+    "en"
+  );
+}
+
+/**
+ * Send OTP SMS/WhatsApp message
+ * Uses MSG91_TEMPLATE_OTP template if configured
+ * Note: Currently OTP is not sent via MSG91 in the codebase, but this function is available for future use
+ */
+export async function sendOtpMessage(
+  phone: string,
+  otp: string,
+  variables?: WhatsAppTemplateVariables
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const templateName = process.env.MSG91_TEMPLATE_OTP;
+  if (!templateName) {
+    return {
+      success: false,
+      error:
+        "MSG91_TEMPLATE_OTP not configured. OTP sending via MSG91 is disabled.",
+    };
+  }
+
+  const formattedPhone = formatPhoneNumber(phone);
+
+  const templateVariables: WhatsAppTemplateVariables = {
+    body_1: {
+      type: "text",
+      value: otp,
+    },
+    ...variables,
+  };
+
+  return sendWhatsAppMessage(phone, templateName, templateVariables, "en");
+}

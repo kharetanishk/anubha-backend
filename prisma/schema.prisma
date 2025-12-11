@@ -339,6 +339,7 @@ model Appointment {
   notes                   String?
   reminderSent            Boolean             @default(false)
   shortNoticeReminderSent Boolean             @default(false)
+  reminderTime            DateTime?           // When to send reminder (slotTime - 1 hour)
   planSlug                String
   planName                String
   planPrice               Int
@@ -362,6 +363,7 @@ model Appointment {
   @@index([bookingProgress]) // Frequently queried for booking flow
   @@index([status, bookingProgress]) // Common query pattern: PENDING appointments by progress
   @@index([slotId, status]) // Prevent multiple PENDING appointments per slot
+  @@index([reminderTime, reminderSent]) // For cron job to find appointments needing reminders
   @@index([isArchived])
   // Note: Partial unique constraint (only one PENDING per slot) added via migration
   // See prisma/migrations/add_partial_unique_constraint.sql

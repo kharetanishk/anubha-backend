@@ -34,6 +34,12 @@ interface EnvConfig {
   MSG91_AUTH_KEY: string;
   MSG91_INTEGRATED_NUMBER?: string; // Optional, has default
 
+  // MSG91 Template IDs for SMS/WhatsApp
+  MSG91_TEMPLATE_BOOKING_CONFIRMATION?: string; // Booking confirmation template
+  MSG91_TEMPLATE_REMINDER?: string; // Reminder (1 hour before) template
+  MSG91_TEMPLATE_LAST_MINUTE?: string; // Last-minute combined confirmation + reminder template
+  MSG91_TEMPLATE_OTP?: string; // OTP template (if using MSG91 for OTP)
+
   // Optional/Development only
   WHATSAPP_PHONE_NUMBER_ID?: string;
   META_ACCESS_TOKEN?: string;
@@ -157,6 +163,21 @@ export function validateEnv(): ValidationResult {
   // Optional: MSG91 Integrated Number (has default)
   if (process.env.MSG91_INTEGRATED_NUMBER) {
     config.MSG91_INTEGRATED_NUMBER = process.env.MSG91_INTEGRATED_NUMBER;
+  }
+
+  // Optional: MSG91 Template IDs (templates can be configured later)
+  if (process.env.MSG91_TEMPLATE_BOOKING_CONFIRMATION) {
+    config.MSG91_TEMPLATE_BOOKING_CONFIRMATION =
+      process.env.MSG91_TEMPLATE_BOOKING_CONFIRMATION;
+  }
+  if (process.env.MSG91_TEMPLATE_REMINDER) {
+    config.MSG91_TEMPLATE_REMINDER = process.env.MSG91_TEMPLATE_REMINDER;
+  }
+  if (process.env.MSG91_TEMPLATE_LAST_MINUTE) {
+    config.MSG91_TEMPLATE_LAST_MINUTE = process.env.MSG91_TEMPLATE_LAST_MINUTE;
+  }
+  if (process.env.MSG91_TEMPLATE_OTP) {
+    config.MSG91_TEMPLATE_OTP = process.env.MSG91_TEMPLATE_OTP;
   }
 
   // ============================================

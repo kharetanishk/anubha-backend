@@ -8,6 +8,8 @@ import { AppointmentMode, Prisma } from "@prisma/client";
 import {
   sendPatientConfirmationMessage,
   sendDoctorNotificationMessage,
+  sendBookingConfirmationMessage,
+  sendLastMinuteConfirmationMessage,
 } from "../../services/whatsapp.service";
 
 // Initialize Razorpay instance
@@ -841,8 +843,11 @@ export async function getPlanPriceHandler(req: Request, res: Response) {
 }
 
 /**
- * Send WhatsApp notifications to patient and doctor after payment confirmation
- * This is called after payment is verified and appointment is confirmed
+ * Send WhatsApp/SMS notifications to patient and doctor after payment confirmation
+ * Implements the booking logic with three cases based on booking time relative to reminder window
+ * Case A: Booking well before reminder window -> Send booking confirmation only
+ * Case B: Booking inside reminder window -> Send combined last-minute confirmation
+ * Case C: Booking at or after slot time -> Invalid (should not happen, handled in validation)
  */
 async function sendWhatsAppNotifications(
   appointment: any,
@@ -852,14 +857,52 @@ async function sendWhatsAppNotifications(
   try {
     console.log("==========================================");
     console.log(
-      "[WHATSAPP CONFIRMATION] Sending confirmation notifications..."
+      "[BOOKING CONFIRMATION] Processing appointment confirmation notifications..."
     );
     console.log("  Appointment ID:", appointment.id);
     console.log("  Order ID:", orderId);
     console.log("  Payment ID:", paymentId);
     console.log("  Appointment Status: CONFIRMED");
-    console.log("  Slot Booked: Yes");
     console.log("==========================================");
+
+    // Get appointment slot time (use slot.startAt or appointment.startAt)
+    const slotTime = appointment.slot?.startAt || appointment.startAt;
+    if (!slotTime) {
+      console.error(
+        "[BOOKING CONFIRMATION] ❌ Slot time not found, cannot send notifications"
+      );
+      return;
+    }
+
+    const slotTimeDate = new Date(slotTime);
+    const now = new Date();
+
+    // Calculate reminder time (1 hour before slot time)
+    const reminderTime = new Date(slotTimeDate.getTime() - 60 * 60 * 1000); // -1 hour
+
+    console.log("  Slot Time:", slotTimeDate.toISOString());
+    console.log("  Reminder Time:", reminderTime.toISOString());
+    console.log("  Current Time:", now.toISOString());
+    console.log("==========================================");
+
+    // Case C: Booking at or after slot time (invalid - should not happen)
+    if (now >= slotTimeDate) {
+      console.error(
+        "[BOOKING CONFIRMATION] ❌ Invalid: Booking time is at or after slot time"
+      );
+      console.error(
+        "  This should not happen - slot time validation should prevent this"
+      );
+      // Still update reminderTime in DB for consistency, but don't send SMS
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          reminderTime: reminderTime,
+          reminderSent: true, // Mark as sent to prevent cron from trying to send
+        },
+      });
+      return;
+    }
 
     // Get patient phone number
     const patientPhone = appointment.patient?.phone;
@@ -867,36 +910,116 @@ async function sendWhatsAppNotifications(
 
     if (!patientPhone) {
       console.warn(
-        "[WHATSAPP CONFIRMATION] ⚠️ Patient phone not found, skipping patient notification"
+        "[BOOKING CONFIRMATION] ⚠️ Patient phone not found, skipping patient notification"
       );
       console.warn("  Patient Name:", patientName);
       console.warn("  Patient ID:", appointment.patient?.id);
+
+      // Still update reminderTime in DB even if we can't send SMS
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          reminderTime: reminderTime,
+          // Keep reminderSent as false so cron can try later if phone is updated
+        },
+      });
     } else {
-      console.log(
-        "[WHATSAPP CONFIRMATION] Sending patient confirmation message..."
-      );
-      console.log("  Patient Name:", patientName);
-      console.log("  Patient Phone:", patientPhone);
-
-      // Send patient confirmation message
-      // Note: body_1 is automatically set to patient phone number (type: "numbers") in sendPatientConfirmationMessage
-      const patientResult = await sendPatientConfirmationMessage(patientPhone);
-
-      if (patientResult.success) {
+      // Case B: Booking inside reminder window (reminderTime <= now < slotTime)
+      if (reminderTime <= now && now < slotTimeDate) {
         console.log("==========================================");
         console.log(
-          "[WHATSAPP CONFIRMATION] ✅ Patient notification sent successfully"
+          "[BOOKING CONFIRMATION] Case B: Booking inside reminder window"
         );
-        console.log("  Patient Phone:", patientPhone);
+        console.log("  Sending combined last-minute confirmation + reminder");
         console.log("  Patient Name:", patientName);
-        console.log("  Template: patient");
+        console.log("  Patient Phone:", patientPhone);
         console.log("==========================================");
-      } else {
-        console.error("==========================================");
-        console.error("[WHATSAPP CONFIRMATION] ❌ Patient notification failed");
-        console.error("  Patient Phone:", patientPhone);
-        console.error("  Error:", patientResult.error);
-        console.error("==========================================");
+
+        const result = await sendLastMinuteConfirmationMessage(
+          patientPhone,
+          slotTimeDate
+        );
+
+        if (result.success) {
+          console.log("==========================================");
+          console.log(
+            "[BOOKING CONFIRMATION] ✅ Last-minute confirmation sent successfully"
+          );
+          console.log("  Patient Phone:", patientPhone);
+          console.log("  Template: Last-minute combined");
+          console.log("==========================================");
+
+          // Update DB: set reminderSent = true (no separate reminder needed)
+          await prisma.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              reminderTime: reminderTime,
+              reminderSent: true, // Mark as sent so cron doesn't send another reminder
+            },
+          });
+        } else {
+          console.error("==========================================");
+          console.error(
+            "[BOOKING CONFIRMATION] ❌ Last-minute confirmation failed"
+          );
+          console.error("  Patient Phone:", patientPhone);
+          console.error("  Error:", result.error);
+          console.error("==========================================");
+
+          // Still update reminderTime in DB, but keep reminderSent = false
+          // so cron can try to send reminder later
+          await prisma.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              reminderTime: reminderTime,
+              reminderSent: false,
+            },
+          });
+        }
+      }
+      // Case A: Booking well before reminder window (now < reminderTime)
+      else {
+        console.log("==========================================");
+        console.log(
+          "[BOOKING CONFIRMATION] Case A: Booking well before reminder window"
+        );
+        console.log("  Sending booking confirmation only");
+        console.log("  Reminder will be sent later by cron job");
+        console.log("  Patient Name:", patientName);
+        console.log("  Patient Phone:", patientPhone);
+        console.log("==========================================");
+
+        const result = await sendBookingConfirmationMessage(
+          patientPhone,
+          slotTimeDate
+        );
+
+        if (result.success) {
+          console.log("==========================================");
+          console.log(
+            "[BOOKING CONFIRMATION] ✅ Booking confirmation sent successfully"
+          );
+          console.log("  Patient Phone:", patientPhone);
+          console.log("  Template: Booking confirmation");
+          console.log("==========================================");
+        } else {
+          console.error("==========================================");
+          console.error(
+            "[BOOKING CONFIRMATION] ❌ Booking confirmation failed"
+          );
+          console.error("  Patient Phone:", patientPhone);
+          console.error("  Error:", result.error);
+          console.error("==========================================");
+        }
+
+        // Update DB: set reminderSent = false (cron will send reminder later)
+        await prisma.appointment.update({
+          where: { id: appointment.id },
+          data: {
+            reminderTime: reminderTime,
+            reminderSent: false, // Cron job will send reminder later
+          },
+        });
       }
     }
 
