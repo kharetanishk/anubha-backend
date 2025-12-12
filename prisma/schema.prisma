@@ -352,6 +352,9 @@ model Appointment {
   updatedAt               DateTime            @updatedAt
   isArchived              Boolean             @default(false)
   archivedAt              DateTime?
+  isDeletedByAdmin        Boolean             @default(false)
+  deletedByAdminAt        DateTime?
+  deletedByAdminReason    String?
   DoctorFormSession       DoctorFormSession[]
   Reminder                Reminder[]
   MessageLog              MessageLog[]
@@ -365,6 +368,7 @@ model Appointment {
   @@index([slotId, status]) // Prevent multiple PENDING appointments per slot
   @@index([reminderTime, reminderSent]) // For cron job to find appointments needing reminders
   @@index([isArchived])
+  @@index([isDeletedByAdmin])
   // Note: Partial unique constraint (only one PENDING per slot) added via migration
   // See prisma/migrations/add_partial_unique_constraint.sql
 }

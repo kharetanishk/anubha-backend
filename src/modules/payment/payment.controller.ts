@@ -81,6 +81,7 @@ export async function createOrderHandler(req: Request, res: Response) {
           where: {
             id: appointmentId,
             userId,
+            isArchived: false, // Exclude archived appointments
           },
           include: {
             patient: true,
@@ -251,6 +252,7 @@ export async function createOrderHandler(req: Request, res: Response) {
     }
 
     // OLD FLOW: Create new appointment (for backward compatibility - not recommended)
+    // IMPORTANT: Check if appointment already exists to prevent duplicates
     if (!slotId || !patientId || !planSlug || !appointmentMode) {
       return res.status(400).json({
         success: false,
@@ -313,6 +315,134 @@ export async function createOrderHandler(req: Request, res: Response) {
       });
     }
 
+    // CRITICAL: Check if appointment already exists for this slot/patient/user combination
+    // This prevents duplicate appointments when payment is confirmed
+    const existingAppointment = await prisma.appointment.findFirst({
+      where: {
+        slotId: slot.id,
+        patientId: patientId,
+        userId: userId,
+        isArchived: false, // Only check non-archived appointments
+      },
+      include: {
+        patient: true,
+        slot: true,
+      },
+      orderBy: {
+        createdAt: "desc", // Get the most recent one
+      },
+    });
+
+    if (existingAppointment) {
+      console.log(
+        "[PAYMENT] ⚠️ Appointment already exists for this slot/patient. Using existing appointment:",
+        existingAppointment.id
+      );
+
+      // If appointment is already CONFIRMED, return error
+      if (existingAppointment.status === "CONFIRMED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Appointment is already confirmed. Please use the existing appointment.",
+        });
+      }
+
+      // If appointment is PENDING, use it instead of creating a new one
+      appointment = existingAppointment;
+      console.log(
+        "[PAYMENT] Using existing PENDING appointment:",
+        appointment.id
+      );
+    } else {
+      // No existing appointment found, proceed with creating new one
+      const amountInPaise = Math.round(plan.price * 100);
+      const receipt = `rcpt_${Date.now()}`;
+
+      let order;
+      try {
+        order = await razorpay.orders.create({
+          amount: amountInPaise,
+          currency: "INR",
+          receipt: receipt,
+        });
+      } catch (razorpayError: any) {
+        console.error(
+          "[PAYMENT] Razorpay order creation failed:",
+          razorpayError
+        );
+        return res.status(500).json({
+          success: false,
+          error:
+            razorpayError?.error?.description ||
+            "Failed to create payment order",
+        });
+      }
+
+      const doctorId = await getSingleAdminId();
+
+      try {
+        appointment = await prisma.appointment.create({
+          data: {
+            userId,
+            doctorId,
+            patientId,
+            slotId: slot.id,
+            startAt: slot.startAt,
+            endAt: slot.endAt,
+            paymentId: order.id,
+            amount: plan.price, // Store in rupees
+            status: "PENDING",
+            mode: modeEnum,
+            planSlug,
+            planName: plan.name,
+            planPrice: plan.price,
+            planDuration: plan.duration,
+            planPackageName: plan.packageName,
+          },
+        });
+      } catch (err: any) {
+        // Handle unique constraint -> slot double booking race condition
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2002" &&
+          Array.isArray(err.meta?.target) &&
+          err.meta?.target.includes("slotId")
+        ) {
+          return res.status(409).json({
+            success: false,
+            error: "Slot already booked by another user",
+          });
+        }
+        throw err;
+      }
+    }
+
+    // Handle return for both existing and new appointments
+    if (appointment.paymentId && appointment.paymentId.startsWith("order_")) {
+      // Appointment already has a payment order, fetch it
+      try {
+        const existingOrder = await razorpay.orders.fetch(
+          appointment.paymentId
+        );
+        return res.json({
+          success: true,
+          order: {
+            id: existingOrder.id,
+            amount: existingOrder.amount,
+            currency: existingOrder.currency,
+            receipt: existingOrder.receipt,
+            status: existingOrder.status,
+          },
+          appointmentId: appointment.id,
+        });
+      } catch (error: any) {
+        console.error("[PAYMENT] Failed to fetch existing order:", error);
+        // If order fetch fails, create a new one
+      }
+    }
+
+    // Create new order for appointment (either new or existing without order)
     const amountInPaise = Math.round(plan.price * 100);
     const receipt = `rcpt_${Date.now()}`;
 
@@ -323,6 +453,15 @@ export async function createOrderHandler(req: Request, res: Response) {
         currency: "INR",
         receipt: receipt,
       });
+
+      // Update appointment with payment order ID
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          paymentId: order.id,
+          paymentStatus: "PENDING",
+        } as any,
+      });
     } catch (razorpayError: any) {
       console.error("[PAYMENT] Razorpay order creation failed:", razorpayError);
       return res.status(500).json({
@@ -330,44 +469,6 @@ export async function createOrderHandler(req: Request, res: Response) {
         error:
           razorpayError?.error?.description || "Failed to create payment order",
       });
-    }
-
-    const doctorId = await getSingleAdminId();
-
-    try {
-      appointment = await prisma.appointment.create({
-        data: {
-          userId,
-          doctorId,
-          patientId,
-          slotId: slot.id,
-          startAt: slot.startAt,
-          endAt: slot.endAt,
-          paymentId: order.id,
-          amount: plan.price, // Store in rupees
-          status: "PENDING",
-          mode: modeEnum,
-          planSlug,
-          planName: plan.name,
-          planPrice: plan.price,
-          planDuration: plan.duration,
-          planPackageName: plan.packageName,
-        },
-      });
-    } catch (err: any) {
-      // Handle unique constraint -> slot double booking race condition
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === "P2002" &&
-        Array.isArray(err.meta?.target) &&
-        err.meta?.target.includes("slotId")
-      ) {
-        return res.status(409).json({
-          success: false,
-          error: "Slot already booked by another user",
-        });
-      }
-      throw err;
     }
 
     return res.json({
@@ -468,10 +569,11 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
     );
 
     // Find appointment by payment order ID with patient and doctor details
-    const appointment = await prisma.appointment.findFirst({
+    let appointment = await prisma.appointment.findFirst({
       where: {
         paymentId: orderId,
         userId, // Ensure appointment belongs to the user
+        isArchived: false, // Only check non-archived appointments
       },
       include: {
         slot: true,
@@ -493,6 +595,68 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
         },
       },
     });
+
+    // CRITICAL FALLBACK: If appointment not found by paymentId, check for PENDING appointments
+    // that might have been created but not yet linked with paymentId
+    // This handles edge cases where appointment was created but paymentId wasn't properly saved
+    if (!appointment) {
+      console.warn(
+        "[PAYMENT] ⚠️ Appointment not found by paymentId, checking for PENDING appointments to link..."
+      );
+
+      // Try to find the appointment by extracting slot/patient info from Razorpay order notes
+      try {
+        const razorpayOrder = await razorpay.orders.fetch(orderId);
+        const appointmentIdFromNotes = razorpayOrder.notes?.appointmentId;
+
+        if (appointmentIdFromNotes) {
+          appointment = await prisma.appointment.findFirst({
+            where: {
+              id: appointmentIdFromNotes,
+              userId,
+              isArchived: false,
+            },
+            include: {
+              slot: true,
+              patient: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                  email: true,
+                },
+              },
+              doctor: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                  email: true,
+                },
+              },
+            },
+          });
+
+          if (appointment && appointment.status === "PENDING") {
+            // Link the paymentId to this appointment if it's not already set
+            if (!appointment.paymentId) {
+              await prisma.appointment.update({
+                where: { id: appointment.id },
+                data: { paymentId: orderId },
+              });
+              console.log(
+                `[PAYMENT] ✅ Linked paymentId ${orderId} to appointment ${appointment.id}`
+              );
+            }
+          }
+        }
+      } catch (fetchError: any) {
+        console.error(
+          "[PAYMENT] Failed to fetch Razorpay order for fallback lookup:",
+          fetchError
+        );
+      }
+    }
 
     if (!appointment) {
       console.error("[PAYMENT] Appointment not found for order:", orderId);
@@ -590,6 +754,50 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
             notes: paymentId, // Razorpay Payment ID (pay_xxxxx)
           } as any,
         });
+
+        // CRITICAL: Archive any other PENDING appointments for the same slot/user/patient
+        // This prevents duplicate PENDING appointments from remaining after confirmation
+        // First, fetch the appointment details we need for cleanup
+        const confirmedAppt = await tx.appointment.findUnique({
+          where: { id: appointment.id },
+          select: { userId: true, patientId: true, slotId: true },
+        });
+
+        if (confirmedAppt && confirmedAppt.slotId) {
+          const duplicatePendingAppointments = await tx.appointment.findMany({
+            where: {
+              slotId: confirmedAppt.slotId,
+              userId: confirmedAppt.userId,
+              patientId: confirmedAppt.patientId,
+              status: "PENDING",
+              id: { not: appointment.id }, // Exclude the one we just confirmed
+              isArchived: false,
+            },
+          });
+
+          if (duplicatePendingAppointments.length > 0) {
+            console.log(
+              `[PAYMENT] 🧹 Archiving ${duplicatePendingAppointments.length} duplicate PENDING appointment(s) for the same slot/user/patient`
+            );
+
+            await tx.appointment.updateMany({
+              where: {
+                id: {
+                  in: duplicatePendingAppointments.map((apt: any) => apt.id),
+                },
+              },
+              data: {
+                isArchived: true,
+                archivedAt: new Date(),
+              },
+            });
+
+            console.log(
+              `[PAYMENT] ✅ Archived duplicate appointments:`,
+              duplicatePendingAppointments.map((apt: any) => apt.id)
+            );
+          }
+        }
 
         console.log("==========================================");
         console.log("[PAYMENT SUCCESS] Payment Verified and Stored:");
@@ -725,6 +933,7 @@ export async function getExistingOrderHandler(req: Request, res: Response) {
       where: {
         id: appointmentId,
         userId, // Ensure appointment belongs to the user
+        isArchived: false, // Exclude archived appointments
       },
       select: {
         id: true,
@@ -1270,9 +1479,10 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
             }
 
             // Find appointment by payment order ID
-            const appointment = await tx.appointment.findFirst({
+            let appointment = await tx.appointment.findFirst({
               where: {
                 paymentId: orderId,
+                isArchived: false, // Only check non-archived appointments
               },
               include: {
                 slot: true,
@@ -1294,6 +1504,65 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
                 },
               },
             });
+
+            // CRITICAL FALLBACK: If appointment not found by paymentId, check via order notes
+            if (!appointment) {
+              console.warn(
+                "[WEBHOOK] ⚠️ Appointment not found by paymentId, checking order notes..."
+              );
+
+              try {
+                const razorpayOrder = await razorpay.orders.fetch(orderId);
+                const appointmentIdFromNotes =
+                  razorpayOrder.notes?.appointmentId;
+
+                if (appointmentIdFromNotes) {
+                  appointment = await tx.appointment.findFirst({
+                    where: {
+                      id: appointmentIdFromNotes,
+                      isArchived: false,
+                    },
+                    include: {
+                      slot: true,
+                      patient: {
+                        select: {
+                          id: true,
+                          name: true,
+                          phone: true,
+                          email: true,
+                        },
+                      },
+                      doctor: {
+                        select: {
+                          id: true,
+                          name: true,
+                          phone: true,
+                          email: true,
+                        },
+                      },
+                    },
+                  });
+
+                  if (appointment && appointment.status === "PENDING") {
+                    // Link the paymentId to this appointment if it's not already set
+                    if (!appointment.paymentId) {
+                      await tx.appointment.update({
+                        where: { id: appointment.id },
+                        data: { paymentId: orderId },
+                      });
+                      console.log(
+                        `[WEBHOOK] ✅ Linked paymentId ${orderId} to appointment ${appointment.id}`
+                      );
+                    }
+                  }
+                }
+              } catch (fetchError: any) {
+                console.error(
+                  "[WEBHOOK] Failed to fetch Razorpay order for fallback:",
+                  fetchError
+                );
+              }
+            }
 
             if (!appointment) {
               console.warn(
@@ -1348,6 +1617,53 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
                 notes: paymentId, // Store Razorpay Payment ID
               } as any,
             });
+
+            // CRITICAL: Archive any other PENDING appointments for the same slot/user/patient
+            // This prevents duplicate PENDING appointments from remaining after confirmation
+            // Fetch appointment details for cleanup
+            const confirmedAppt = await tx.appointment.findUnique({
+              where: { id: appointment.id },
+              select: { userId: true, patientId: true, slotId: true },
+            });
+
+            if (confirmedAppt && confirmedAppt.slotId) {
+              const duplicatePendingAppointments =
+                await tx.appointment.findMany({
+                  where: {
+                    slotId: confirmedAppt.slotId,
+                    userId: confirmedAppt.userId,
+                    patientId: confirmedAppt.patientId,
+                    status: "PENDING",
+                    id: { not: appointment.id }, // Exclude the one we just confirmed
+                    isArchived: false,
+                  },
+                });
+
+              if (duplicatePendingAppointments.length > 0) {
+                console.log(
+                  `[WEBHOOK] 🧹 Archiving ${duplicatePendingAppointments.length} duplicate PENDING appointment(s) for the same slot/user/patient`
+                );
+
+                await tx.appointment.updateMany({
+                  where: {
+                    id: {
+                      in: duplicatePendingAppointments.map(
+                        (apt: any) => apt.id
+                      ),
+                    },
+                  },
+                  data: {
+                    isArchived: true,
+                    archivedAt: new Date(),
+                  },
+                });
+
+                console.log(
+                  `[WEBHOOK] ✅ Archived duplicate appointments:`,
+                  duplicatePendingAppointments.map((apt: any) => apt.id)
+                );
+              }
+            }
 
             console.log("[WEBHOOK] ✅ Appointment confirmed:", appointment.id);
 

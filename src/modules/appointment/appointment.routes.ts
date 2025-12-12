@@ -7,6 +7,7 @@ import {
   getUserAppointmentDetails,
   getPendingAppointments,
   updateBookingProgress,
+  deleteAppointmentHandler,
 } from "./appointment.controller";
 import { attachUser } from "../../middleware/attachUser";
 import { requireAuth } from "../../middleware/requireAuth";
@@ -73,6 +74,13 @@ appointmentRoutes.patch(
   requireAuth,
   validateFieldSizes(), // Validate field sizes
   updateBookingProgress
+);
+
+appointmentRoutes.delete(
+  "/:appointmentId",
+  attachUser,
+  requireAuth,
+  deleteAppointmentHandler
 );
 
 export default appointmentRoutes;

@@ -436,6 +436,71 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           message: "Patient not found or unauthorized. Please refresh and try again.",
         });
       }
+
+      // CRITICAL: Check if a PENDING appointment already exists for this user/patient/slot combination
+      // This prevents duplicate PENDING appointments when the booking flow is called multiple times
+      // Only check if slotId is provided (for appointments with slots)
+      if (finalSlotId) {
+        const existingPendingAppointment = await prisma.appointment.findFirst({
+          where: {
+            userId,
+            patientId,
+            slotId: finalSlotId,
+            status: "PENDING",
+            isArchived: false, // Only check non-archived appointments
+          },
+          orderBy: {
+            createdAt: "desc", // Get the most recent one
+          },
+        });
+
+        if (existingPendingAppointment) {
+          console.log(
+            " [BACKEND] ⚠️ PENDING appointment already exists for this slot/patient. Updating existing appointment:",
+            existingPendingAppointment.id
+          );
+
+          // Determine booking progress based on what's provided
+          let progress: BookingProgress | null = null;
+          if (bookingProgress && ["USER_DETAILS", "RECALL", "SLOT", "PAYMENT"].includes(bookingProgress)) {
+            progress = bookingProgress as BookingProgress;
+          } else {
+            // Auto-detect progress based on provided data
+            if (slotId) {
+              progress = "SLOT"; // Slot selected, next is payment
+            } else if (patientId) {
+              progress = "USER_DETAILS"; // User form filled, next is recall
+            }
+          }
+
+          // Update the existing PENDING appointment instead of creating a new one
+          appointment = await prisma.appointment.update({
+            where: { id: existingPendingAppointment.id },
+            data: {
+              bookingProgress: progress,
+              startAt: appointmentStartAt,
+              endAt: appointmentEndAt,
+              mode: appointmentMode as AppointmentMode,
+              planSlug,
+              planName,
+              planPrice: Number(planPrice),
+              planDuration,
+              planPackageName,
+            },
+          });
+
+          console.log(" [BACKEND] Updated existing PENDING appointment:", appointment.id);
+          
+          // Return early - don't create a new appointment
+          return res.status(200).json({
+            success: true,
+            message: "Appointment updated successfully",
+            data: appointment,
+            updated: true, // Indicate this was an update, not a create
+          });
+        }
+      }
+
       // Determine booking progress based on what's provided
       let progress: BookingProgress | null = null;
       if (bookingProgress && ["USER_DETAILS", "RECALL", "SLOT", "PAYMENT"].includes(bookingProgress)) {
@@ -550,6 +615,7 @@ export async function adminUpdateAppointmentStatus(
     const appointment = await prisma.appointment.findUnique({
       where: { id },
       include: { slot: true },
+      // Note: admin status update doesn't check isArchived as admin may need to update archived records
     });
 
     if (!appointment) {
@@ -618,6 +684,7 @@ export async function getMyAppointments(req: Request, res: Response) {
     // Build where clause
     const where: any = {
       userId: req.user.id,
+      isArchived: false, // Exclude deleted appointments
     };
 
     if (includePending === "true") {
@@ -678,6 +745,7 @@ export async function getPendingAppointments(req: Request, res: Response) {
       where: {
         userId: req.user.id,
         status: "PENDING",
+        isArchived: false, // Exclude deleted appointments
       },
       orderBy: { createdAt: "desc" },
       include: {
@@ -742,6 +810,7 @@ export async function updateBookingProgress(req: Request, res: Response) {
         id: appointmentId,
         userId: req.user.id,
         status: "PENDING", // Only allow updating progress for pending appointments
+        isArchived: false, // Exclude archived appointments
       },
     });
 
@@ -804,6 +873,11 @@ export async function getUserAppointmentDetails(req: Request, res: Response) {
       },
     });
 
+    // Exclude archived appointments from user view
+    if (appointment && appointment.isArchived) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
     if (!appointment) {
       return res.status(404).json({ error: "Appointment not found" });
     }
@@ -833,9 +907,28 @@ export async function getAppointmentsByPatient(req: Request, res: Response) {
 
     const { patientId } = req.params;
 
-    const patient = await prisma.patientDetials.findFirst({
-      where: { id: patientId, userId: req.user.id },
-    });
+    // Wrap database operations in try-catch to handle connection errors
+    let patient;
+    try {
+      patient = await prisma.patientDetials.findFirst({
+        where: { 
+          id: patientId, 
+          userId: req.user.id,
+          isArchived: false, // Exclude archived patients
+        },
+      });
+    } catch (dbError: any) {
+      console.error("[GET APPOINTMENTS BY PATIENT] Database connection error on patient lookup:", dbError);
+      // Handle connection errors (P1017 - Server has closed the connection)
+      if (dbError.code === "P1017" || dbError.message?.includes("closed") || dbError.message?.includes("ConnectionReset")) {
+        return res.status(503).json({
+          success: false,
+          message: "Database connection error. Please try again in a moment.",
+          retryable: true,
+        });
+      }
+      throw dbError; // Re-throw if it's not a connection error
+    }
 
     if (!patient) {
       return res.status(403).json({
@@ -844,18 +937,65 @@ export async function getAppointmentsByPatient(req: Request, res: Response) {
       });
     }
 
-    const appointments = await prisma.appointment.findMany({
-      where: { patientId },
-      orderBy: { startAt: "desc" },
-      include: {
-        slot: true,
-        patient: true,
-      },
-    });
+    let appointments;
+    try {
+      appointments = await prisma.appointment.findMany({
+        where: {
+          patientId,
+          isArchived: false, // Exclude deleted appointments
+          status: "CONFIRMED", // Only return confirmed appointments (matching getMyAppointments behavior)
+        },
+        orderBy: { startAt: "desc" },
+        include: {
+          slot: {
+            select: {
+              id: true,
+              startAt: true,
+              endAt: true,
+              mode: true,
+            },
+          },
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+            },
+          },
+        },
+      });
+    } catch (dbError: any) {
+      console.error("[GET APPOINTMENTS BY PATIENT] Database connection error on appointments lookup:", dbError);
+      // Handle connection errors (P1017 - Server has closed the connection)
+      if (dbError.code === "P1017" || dbError.message?.includes("closed") || dbError.message?.includes("ConnectionReset")) {
+        return res.status(503).json({
+          success: false,
+          message: "Database connection error. Please try again in a moment.",
+          retryable: true,
+        });
+      }
+      throw dbError; // Re-throw if it's not a connection error
+    }
 
     return res.json({ success: true, appointments });
-  } catch (err) {
-    console.error("GET APPOINTMENTS BY PATIENT ERROR:", err);
+  } catch (err: any) {
+    console.error("[GET APPOINTMENTS BY PATIENT] Unexpected error:", {
+      error: err,
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+    });
+    
+    // Check if it's a connection error that wasn't caught in inner try-catch
+    if (err.code === "P1017" || err.message?.includes("closed") || err.message?.includes("ConnectionReset")) {
+      return res.status(503).json({
+        success: false,
+        message: "Database connection error. Please try again in a moment.",
+        retryable: true,
+      });
+    }
+    
     return res.status(500).json({
       success: false,
       message: "Failed to fetch appointments",
@@ -887,13 +1027,29 @@ export async function updateAppointmentSlotHandler(
     }
 
     // Verify appointment belongs to user
-    const appointment = await prisma.appointment.findFirst({
-      where: {
-        id: appointmentId,
-        userId,
-        status: "PENDING", // Only allow updating pending appointments
-      },
-    });
+    let appointment;
+    try {
+      appointment = await prisma.appointment.findFirst({
+        where: {
+          id: appointmentId,
+          userId,
+          status: "PENDING", // Only allow updating pending appointments
+          isArchived: false, // Exclude archived appointments
+        },
+      });
+    } catch (dbError: any) {
+      console.error("[UPDATE SLOT] Database connection error:", dbError);
+      // Handle connection errors (P1017 - Server has closed the connection)
+      if (dbError.code === "P1017" || dbError.message?.includes("closed")) {
+        // Return a user-friendly error and suggest retry
+        return res.status(503).json({
+          success: false,
+          message: "Database connection error. Please try again in a moment.",
+          retryable: true,
+        });
+      }
+      throw dbError; // Re-throw other errors
+    }
 
     if (!appointment) {
       return res.status(404).json({
@@ -903,9 +1059,22 @@ export async function updateAppointmentSlotHandler(
     }
 
     // Verify slot exists and is available
-    const slot = await prisma.slot.findUnique({
-      where: { id: slotId },
-    });
+    let slot;
+    try {
+      slot = await prisma.slot.findUnique({
+        where: { id: slotId },
+      });
+    } catch (dbError: any) {
+      console.error("[UPDATE SLOT] Database connection error on slot lookup:", dbError);
+      if (dbError.code === "P1017" || dbError.message?.includes("closed")) {
+        return res.status(503).json({
+          success: false,
+          message: "Database connection error. Please try again in a moment.",
+          retryable: true,
+        });
+      }
+      throw dbError;
+    }
 
     if (!slot) {
       return res.status(404).json({
@@ -940,13 +1109,25 @@ export async function updateAppointmentSlotHandler(
       // Only unbook slot if appointment is still PENDING
       // CONFIRMED, CANCELLED, or COMPLETED appointments should not have their slots unbooked
       if (currentAppointment.status === "PENDING") {
-        await prisma.slot.update({
-          where: { id: appointment.slotId },
-          data: { isBooked: false },
-        });
-        console.log(
-          `[BACKEND] Unbooked slot ${appointment.slotId} for PENDING appointment ${appointmentId}`
-        );
+        try {
+          await prisma.slot.update({
+            where: { id: appointment.slotId },
+            data: { isBooked: false },
+          });
+          console.log(
+            `[BACKEND] Unbooked slot ${appointment.slotId} for PENDING appointment ${appointmentId}`
+          );
+        } catch (dbError: any) {
+          console.error("[UPDATE SLOT] Database connection error on slot unbooking:", dbError);
+          if (dbError.code === "P1017" || dbError.message?.includes("closed")) {
+            return res.status(503).json({
+              success: false,
+              message: "Database connection error. Please try again in a moment.",
+              retryable: true,
+            });
+          }
+          throw dbError;
+        }
       } else {
         console.warn(
           `[BACKEND] Cannot unbook slot for appointment ${appointmentId} with status ${currentAppointment.status}`
@@ -974,10 +1155,23 @@ export async function updateAppointmentSlotHandler(
       updateData.bookingProgress = "SLOT";
     }
 
-    const updatedAppointment = await prisma.appointment.update({
-      where: { id: appointmentId },
-      data: updateData,
-    });
+    let updatedAppointment;
+    try {
+      updatedAppointment = await prisma.appointment.update({
+        where: { id: appointmentId },
+        data: updateData,
+      });
+    } catch (dbError: any) {
+      console.error("[UPDATE SLOT] Database connection error on appointment update:", dbError);
+      if (dbError.code === "P1017" || dbError.message?.includes("closed")) {
+        return res.status(503).json({
+          success: false,
+          message: "Database connection error. Please try again in a moment.",
+          retryable: true,
+        });
+      }
+      throw dbError;
+    }
 
     // NOTE: Slot is NOT marked as booked here. It will only be marked as booked
     // after payment is confirmed and appointment status is set to CONFIRMED.
@@ -998,9 +1192,94 @@ export async function updateAppointmentSlotHandler(
     });
   } catch (err: any) {
     console.error("UPDATE APPOINTMENT SLOT ERROR:", err);
+    
+    // Handle Prisma connection errors specifically
+    if (err.code === "P1017" || err.message?.includes("closed") || err.message?.includes("connection")) {
+      return res.status(503).json({
+        success: false,
+        message: "Database connection error. Please try again in a moment.",
+        retryable: true,
+      });
+    }
+    
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: err.message || "Internal server error",
+    });
+  }
+}
+
+/**
+ * Delete an appointment (user can delete their own appointments)
+ */
+export async function deleteAppointmentHandler(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthenticated",
+      });
+    }
+
+    const { appointmentId } = req.params;
+
+    if (!appointmentId) {
+      return res.status(400).json({
+        success: false,
+        error: "Appointment ID is required",
+      });
+    }
+
+    // Check if appointment exists and belongs to this user
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: { id: true, userId: true, isArchived: true },
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: "Appointment not found",
+      });
+    }
+
+    // Verify user owns this appointment
+    if (appointment.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: "Unauthorized: You don't have permission to delete this appointment",
+      });
+    }
+
+    // Check if already archived
+    if (appointment.isArchived) {
+      return res.status(400).json({
+        success: false,
+        error: "Appointment is already deleted",
+      });
+    }
+
+    // Soft delete by setting isArchived = true and archivedAt timestamp
+    await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        isArchived: true,
+        archivedAt: new Date(),
+      },
+    });
+
+    console.log(`[USER] Appointment ${appointmentId} deleted by user ${userId}`);
+
+    return res.json({
+      success: true,
+      message: "Appointment deleted successfully",
+    });
+  } catch (err: any) {
+    console.error("User Delete Appointment Error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to delete appointment",
     });
   }
 }

@@ -53,6 +53,10 @@ export async function adminGetAppointments(req: Request, res: Response) {
     const lim = Math.min(200, Math.max(1, Number(limit)));
     const skip = (pageNum - 1) * lim;
 
+    // Exclude archived appointments and admin-deleted appointments from admin view
+    where.isArchived = false;
+    where.isDeletedByAdmin = false; // Admin-only soft delete: hide from admin view
+
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
@@ -60,6 +64,7 @@ export async function adminGetAppointments(req: Request, res: Response) {
           id: true,
           startAt: true,
           endAt: true,
+          createdAt: true,
           status: true,
           mode: true,
           planName: true,
@@ -92,6 +97,120 @@ export async function adminGetAppointments(req: Request, res: Response) {
     return res
       .status(500)
       .json({ success: false, message: "Something went wrong" });
+  }
+}
+
+/**
+ * Admin-only soft delete: Removes appointment from admin view only
+ * Does NOT affect user visibility - appointment remains visible to user
+ */
+export async function adminDeleteAppointment(req: Request, res: Response) {
+  try {
+    const adminId = req.user?.id;
+    if (!adminId) {
+      return res.status(401).json({ success: false, error: "Unauthenticated" });
+    }
+
+    const { id } = req.params;
+    const { reason, scope } = req.body as {
+      reason?: string;
+      scope?: "admin" | "global";
+    };
+
+    // Check if appointment exists and belongs to this admin
+    const appointment = await prisma.appointment.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        doctorId: true,
+        isArchived: true,
+        isDeletedByAdmin: true,
+      },
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: "Appointment not found",
+      });
+    }
+
+    // Verify admin owns/manages this appointment
+    if (appointment.doctorId !== adminId) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Unauthorized: You don't have permission to delete this appointment",
+      });
+    }
+
+    // Determine delete scope: default to admin-only, allow global archive if explicitly requested
+    const deleteScope = scope || "admin";
+
+    if (deleteScope === "global") {
+      // Global archive: removes from both admin and user views
+      if (appointment.isArchived) {
+        return res.status(400).json({
+          success: false,
+          error: "Appointment is already archived globally",
+        });
+      }
+
+      await prisma.appointment.update({
+        where: { id },
+        data: {
+          isArchived: true,
+          archivedAt: new Date(),
+          isDeletedByAdmin: true, // Also mark as admin-deleted for audit
+          deletedByAdminAt: new Date(),
+          deletedByAdminReason: reason || "Archived globally by admin",
+        },
+      });
+
+      console.log(
+        `[ADMIN] Appointment ${id} archived globally by admin ${adminId}`
+      );
+
+      return res.json({
+        success: true,
+        message: "Appointment archived globally (removed from all views)",
+        scope: "global",
+      });
+    } else {
+      // Admin-only delete: only removes from admin view, user still sees it
+      if (appointment.isDeletedByAdmin) {
+        return res.status(400).json({
+          success: false,
+          error: "Appointment is already deleted from admin view",
+        });
+      }
+
+      await prisma.appointment.update({
+        where: { id },
+        data: {
+          isDeletedByAdmin: true,
+          deletedByAdminAt: new Date(),
+          deletedByAdminReason: reason || null,
+        },
+      });
+
+      console.log(
+        `[ADMIN] Appointment ${id} deleted from admin view only by admin ${adminId} (user can still see it)`
+      );
+
+      return res.json({
+        success: true,
+        message:
+          "Appointment deleted from admin dashboard (user view unaffected)",
+        scope: "admin",
+      });
+    }
+  } catch (err: any) {
+    console.error("Admin Delete Appointment Error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to delete appointment",
+    });
   }
 }
 

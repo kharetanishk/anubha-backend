@@ -12,6 +12,7 @@ import {
   adminGetAppointments,
   adminUpdateAppointmentStatus,
   adminGetAppointmentDetails,
+  adminDeleteAppointment,
   createDoctorSession,
   upsertDoctorFieldValue,
   getDoctorSession,
@@ -54,6 +55,24 @@ adminRoutes.patch(
   requireRole(Role.ADMIN),
   validateFieldSizes(), // Validate field sizes
   adminUpdateAppointmentStatus
+);
+
+// Admin delete endpoint: supports both DELETE (backward compatibility) and PATCH (recommended)
+// DELETE /admin/appointments/:id - default admin-only delete
+// PATCH /admin/appointments/:id/admin-delete - explicit admin-only delete (recommended)
+adminRoutes.delete(
+  "/appointments/:id",
+  attachUser,
+  requireAuth,
+  requireRole(Role.ADMIN),
+  adminDeleteAppointment
+);
+adminRoutes.patch(
+  "/appointments/:id/admin-delete",
+  attachUser,
+  requireAuth,
+  requireRole(Role.ADMIN),
+  adminDeleteAppointment
 );
 
 adminRoutes.post(

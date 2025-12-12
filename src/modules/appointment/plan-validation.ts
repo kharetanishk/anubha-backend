@@ -46,7 +46,7 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
     slug: "kids-nutrition",
     packages: [
       {
-        name: "Kid's Nutrition Plan",
+        name: "Kids Nutrition Personalized Plan",
         details:
           "Personalized diet plan and food guide for children aged 3–18 years.",
         price: 5500, // ₹5,500 in rupees
@@ -118,7 +118,7 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
         name: "Consultation Session",
         details: "General consultation session with 40-minute duration.",
         duration: "40 min",
-        price: 1, // ₹1 in rupees (for testing)
+        price: 1000, // ₹1,000 in rupees
       },
     ],
   },
@@ -184,13 +184,26 @@ export function validatePlanDetails(opts: {
 
   // If package name is provided, validate against specific package
   if (planPackageName) {
+    console.log(" [PLAN VALIDATION] Looking for package:", {
+      providedPackageName: planPackageName,
+      availablePackages: plan.packages.map((pkg) => pkg.name),
+    });
+
     const package_ = plan.packages.find((pkg) => pkg.name === planPackageName);
 
     if (!package_) {
+      console.error(" [PLAN VALIDATION] Package not found:", {
+        provided: planPackageName,
+        available: plan.packages.map((pkg) => pkg.name),
+      });
       throw new Error(
-        `Invalid package name "${planPackageName}" for plan "${planSlug}"`
+        `Invalid package name "${planPackageName}" for plan "${planSlug}". Available packages: ${plan.packages
+          .map((pkg) => `"${pkg.name}"`)
+          .join(", ")}`
       );
     }
+
+    console.log(" [PLAN VALIDATION] Package found:", package_.name);
 
     // Validate duration if provided (flexible matching)
     if (planDuration && package_.duration) {
