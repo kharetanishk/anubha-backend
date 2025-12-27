@@ -23,11 +23,14 @@ async function createAdminIfNotExists() {
 
     // Create default admin
     console.log("👤 Creating admin...");
+    const bcrypt = require("bcryptjs");
+    const hashedPassword = await bcrypt.hash("admin@123", 10);
     const admin = await prisma.admin.create({
       data: {
         name: "Dr. Anubha",
         email: "admin@nutriwell.com",
         phone: "9999999999",
+        password: hashedPassword,
       },
     });
 

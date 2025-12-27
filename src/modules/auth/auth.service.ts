@@ -127,17 +127,43 @@ export class AuthService {
     // Use transaction with atomic operation to prevent race conditions
     // Delete any existing OTPs for this phone first, then create new one
     // This ensures only one active OTP per phone at a time
-    await prisma.$transaction(async (tx) => {
-      // Delete existing OTPs for this phone (atomic operation)
-      await tx.oTP.deleteMany({
-        where: { phone },
-      });
+    // Increased timeout to handle slow database operations (30 seconds)
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          // Delete existing OTPs for this phone (atomic operation)
+          await tx.oTP.deleteMany({
+            where: { phone },
+          });
 
-      // Create new OTP (atomic operation)
-      await tx.oTP.create({
-        data: { phone, code: hashed, expiresAt },
-      });
-    });
+          // Create new OTP (atomic operation)
+          await tx.oTP.create({
+            data: { phone, code: hashed, expiresAt },
+          });
+        },
+        {
+          timeout: 30000, // 30 seconds timeout
+        }
+      );
+    } catch (error: any) {
+      // Handle Prisma transaction timeout or other database errors
+      if (
+        error.code === "P2028" ||
+        error.message?.includes("Transaction") ||
+        error.message?.includes("timeout")
+      ) {
+        console.error(
+          "[AUTH] Transaction timeout or database error:",
+          error.message
+        );
+        throw new AppError(
+          "The request is taking longer than expected. Please try again in a moment.",
+          503
+        );
+      }
+      // Re-throw other errors
+      throw error;
+    }
 
     // Send OTP via MSG91 WhatsApp
     try {
@@ -195,24 +221,50 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
     // Transaction to clear old OTPs and create new ones
-    await prisma.$transaction(async (tx) => {
-      // Delete existing
-      await tx.oTP.deleteMany({
-        where: {
-          OR: [{ phone }, { email }],
+    // Increased timeout to handle slow database operations (30 seconds)
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          // Delete existing
+          await tx.oTP.deleteMany({
+            where: {
+              OR: [{ phone }, { email }],
+            },
+          });
+
+          // Create for Phone
+          await tx.oTP.create({
+            data: { phone, code: hashed, expiresAt },
+          });
+
+          // Create for Email
+          await tx.oTP.create({
+            data: { email, code: hashed, expiresAt },
+          });
         },
-      });
-
-      // Create for Phone
-      await tx.oTP.create({
-        data: { phone, code: hashed, expiresAt },
-      });
-
-      // Create for Email
-      await tx.oTP.create({
-        data: { email, code: hashed, expiresAt },
-      });
-    });
+        {
+          timeout: 30000, // 30 seconds timeout
+        }
+      );
+    } catch (error: any) {
+      // Handle Prisma transaction timeout or other database errors
+      if (
+        error.code === "P2028" ||
+        error.message?.includes("Transaction") ||
+        error.message?.includes("timeout")
+      ) {
+        console.error(
+          "[AUTH] Transaction timeout or database error:",
+          error.message
+        );
+        throw new AppError(
+          "The request is taking longer than expected. Please try again in a moment.",
+          503
+        );
+      }
+      // Re-throw other errors
+      throw error;
+    }
 
     // Send Parallel
     let phoneSent = false;
@@ -401,34 +453,38 @@ export class AuthService {
     // Case 4: Phone exists but email doesn't exist in any table
     else if (userByPhone || adminByPhone) {
       const phoneOwner = userByPhone || adminByPhone;
-      // Check if the phone owner's email matches the provided email
-      // If phone owner has an email, it must match
-      if (phoneOwner.email) {
-        const ownerEmail = phoneOwner.email.toLowerCase().trim();
-        if (ownerEmail !== normalizedEmail) {
-          throw new AppError(
-            "The provided email does not match the phone number's account.",
-            400
-          );
+      if (phoneOwner) {
+        // Check if the phone owner's email matches the provided email
+        // If phone owner has an email, it must match
+        if (phoneOwner.email) {
+          const ownerEmail = phoneOwner.email.toLowerCase().trim();
+          if (ownerEmail !== normalizedEmail) {
+            throw new AppError(
+              "The provided email does not match the phone number's account.",
+              400
+            );
+          }
         }
+        // If phone owner has no email (phone-only account), allow - email will be used for linking
       }
-      // If phone owner has no email (phone-only account), allow - email will be used for linking
     }
     // Case 5: Email exists but phone doesn't exist in any table
     else if (userByEmail || adminByEmail) {
       const emailOwner = userByEmail || adminByEmail;
-      // Check if the email owner's phone matches the provided phone
-      // If email owner has a phone, it must match
-      if (emailOwner.phone) {
-        const ownerPhone = this.normalizePhone(emailOwner.phone);
-        if (ownerPhone !== normalizedPhone) {
-          throw new AppError(
-            "The provided phone number does not match the email's account.",
-            400
-          );
+      if (emailOwner) {
+        // Check if the email owner's phone matches the provided phone
+        // If email owner has a phone, it must match
+        if (emailOwner.phone) {
+          const ownerPhone = this.normalizePhone(emailOwner.phone);
+          if (ownerPhone !== normalizedPhone) {
+            throw new AppError(
+              "The provided phone number does not match the email's account.",
+              400
+            );
+          }
         }
+        // If email owner has no phone (email-only account), allow - phone will be used for linking
       }
-      // If email owner has no phone (email-only account), allow - phone will be used for linking
     }
     // Case 6: Neither phone nor email exists - allow OTP sending for account linking flow
 
@@ -457,7 +513,7 @@ export class AuthService {
     // If foundOtp was for Phone -> find User by Phone
     // If foundOtp was for Email -> find User by Email
     let user = null;
-    let role = "USER"; // Default
+    let role: "USER" | "ADMIN" = "USER"; // Default
 
     if (foundOtp.phone) {
       const owner = await this.findOwnerByPhone(foundOtp.phone);
@@ -765,6 +821,12 @@ export class AuthService {
 
       // Send password reset email (only if user exists)
       try {
+        console.log(
+          "[AUTH] Attempting to send password reset email to:",
+          normalizedEmail
+        );
+        console.log("[AUTH] Reset link:", resetLink);
+
         const emailSent = await sendPasswordResetEmail(
           normalizedEmail,
           resetLink
@@ -772,22 +834,25 @@ export class AuthService {
 
         if (emailSent) {
           console.log(
-            "[AUTH] Password reset email sent successfully to:",
+            "[AUTH] ✅ Password reset email sent successfully to:",
             normalizedEmail
           );
         } else {
-          console.warn(
-            "[AUTH] Failed to send password reset email to:",
-            normalizedEmail
+          console.error(
+            "[AUTH] ❌ Failed to send password reset email to:",
+            normalizedEmail,
+            "- Email sending function returned false"
           );
           // Don't throw error - log only to prevent breaking the response
         }
       } catch (error: any) {
         // Catch and log SMTP errors without breaking the response
         console.error(
-          "[AUTH] Error sending password reset email:",
-          error.message
+          "[AUTH] ❌ Exception occurred while sending password reset email:"
         );
+        console.error("[AUTH] Error message:", error.message);
+        console.error("[AUTH] Error stack:", error.stack);
+        console.error("[AUTH] Recipient email:", normalizedEmail);
         // Continue execution - don't break the response
       }
 

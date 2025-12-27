@@ -2,15 +2,18 @@ import cron from "node-cron";
 import prisma from "../database/prismaclient";
 import {
   sendReminderMessage,
-  sendDoctorNotificationMessage,
   formatDateForTemplate,
   formatTimeForTemplate,
 } from "../services/whatsapp.service";
+import { getSingleAdmin } from "../modules/slots/slots.services";
 
 /**
  * Appointment Reminder Cron Job
  * Runs every 10 minutes to check for appointments with reminderTime in the current window
- * Sends SMS/WhatsApp reminders to patients 1 hour before their appointment
+ * Sends "reminderbooking" template WhatsApp reminders to:
+ * - Patients: body_1 = Patient Name
+ * - Admin: body_1 = Admin Name
+ * Both receive the same template with different body_1 values
  */
 export function startAppointmentReminderCron() {
   console.log(
@@ -202,11 +205,12 @@ async function sendReminderForAppointment(appointment: any) {
   if (patientPhone) {
     try {
       console.log("[CRON REMINDER] Sending patient reminder...");
-      // Send reminder message using the reminder template
+      // Send reminder message using the reminderbooking template
+      // body_1 will be patient name
       const patientResult = await sendReminderMessage(
         patientPhone,
         slotStartTimeDate,
-        patientName,
+        patientName, // Patient name for body_1
         slotEndTimeDate
       );
 
@@ -252,37 +256,42 @@ async function sendReminderForAppointment(appointment: any) {
     reminderSentSuccessfully = true; // Treat as "sent" to prevent infinite retries
   }
 
-  // Send admin reminder using doctor_confirmation template (fixed admin phone: 916260440241)
+  // Send admin reminder using reminderbooking template (same as patient reminder)
+  // body_1 will be admin name instead of patient name
   // Non-blocking - doesn't affect patient reminder status
   try {
     console.log("[CRON REMINDER] Sending admin reminder...");
-    console.log("  Admin Phone: 916260440241 (fixed)");
-    console.log("  Template: doctor_confirmation");
 
-    // Prepare data for doctor notification
-    const planName = appointment.planName || "Consultation Plan";
-    const appointmentDate = formatDateForTemplate(slotStartTime);
-    const slotTimeFormatted = formatTimeForTemplate(slotStartTime, slotEndTime);
+    // Get admin details (name and phone)
+    const admin = await getSingleAdmin();
+    const adminPhone = admin.phone || "916260440241"; // Fallback to fixed phone if not found
+    const adminName = admin.name || "Admin";
 
-    const adminResult = await sendDoctorNotificationMessage(
-      planName,
-      patientName,
-      appointmentDate,
-      slotTimeFormatted
+    console.log("  Admin Phone:", adminPhone);
+    console.log("  Admin Name:", adminName);
+    console.log("  Template: reminderbooking");
+
+    // Send reminderbooking template to admin with admin name in body_1
+    const adminResult = await sendReminderMessage(
+      adminPhone,
+      slotStartTimeDate,
+      adminName, // Admin name for body_1
+      slotEndTimeDate
     );
 
     if (adminResult.success) {
       console.log("==========================================");
       console.log(`[CRON REMINDER] ✅ Admin reminder sent successfully`);
       console.log("  Appointment ID:", appointmentId);
-      console.log("  Admin Phone: 916260440241");
-      console.log("  Template: doctor_confirmation");
+      console.log("  Admin Phone:", adminPhone);
+      console.log("  Admin Name:", adminName);
+      console.log("  Template: reminderbooking");
       console.log("==========================================");
     } else {
       console.error("==========================================");
       console.error(`[CRON REMINDER] ❌ Admin reminder failed`);
       console.error("  Appointment ID:", appointmentId);
-      console.error("  Admin Phone: 916260440241");
+      console.error("  Admin Phone:", adminPhone);
       console.error("  Error:", adminResult.error);
       console.error("==========================================");
     }
@@ -290,7 +299,6 @@ async function sendReminderForAppointment(appointment: any) {
     console.error("==========================================");
     console.error(`[CRON REMINDER] ❌ Error sending admin reminder`);
     console.error("  Appointment ID:", appointmentId);
-    console.error("  Admin Phone: 916260440241");
     console.error("  Error:", error.message);
     console.error("  Stack:", error.stack);
     console.error("==========================================");

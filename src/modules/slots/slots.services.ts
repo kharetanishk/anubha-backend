@@ -517,10 +517,15 @@ export async function getAdminSlots(opts: {
     where,
     orderBy: { startAt: "asc" },
     include: {
-      appointment: {
+      appointments: {
+        where: {
+          status: "CONFIRMED",
+          isArchived: false,
+        },
         include: {
           patient: true,
         },
+        take: 1, // Get only the first confirmed appointment
       },
     },
   });
@@ -531,11 +536,11 @@ export async function getAdminSlots(opts: {
     endAt: s.endAt,
     mode: s.mode,
     isBooked: s.isBooked,
-    appointment: s.appointment
+    appointment: s.appointments[0]
       ? {
-          id: s.appointment.id,
-          patientName: s.appointment.patient.name,
-          patientId: s.appointment.patientId,
+          id: s.appointments[0].id,
+          patientName: s.appointments[0].patient.name,
+          patientId: s.appointments[0].patientId,
         }
       : null,
   }));

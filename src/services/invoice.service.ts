@@ -373,8 +373,11 @@ export async function generateInvoiceForAppointment(
       };
     }
 
-    // Check payment status
-    if (appointment.paymentStatus !== "SUCCESS") {
+    // Check payment status (accept both SUCCESS and PAID)
+    if (
+      appointment.paymentStatus !== "SUCCESS" &&
+      appointment.paymentStatus !== "PAID"
+    ) {
       return {
         success: false,
         error: `Cannot generate invoice for appointment with payment status: ${appointment.paymentStatus}. Payment must be successful.`,

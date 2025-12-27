@@ -78,7 +78,9 @@ export class PatientService {
 
     // Regenerate signed URLs for files to ensure they're valid
     if (patient.files && patient.files.length > 0) {
-      patient.files = regenerateFileSignedUrls(patient.files as any);
+      patient.files = regenerateFileSignedUrls(
+        patient.files as any
+      ) as typeof patient.files;
     }
 
     return patient;
@@ -106,7 +108,9 @@ export class PatientService {
 
     // Regenerate signed URLs for files to ensure they're valid
     if (patient && patient.files && patient.files.length > 0) {
-      patient.files = regenerateFileSignedUrls(patient.files as any);
+      patient.files = regenerateFileSignedUrls(
+        patient.files as any
+      ) as typeof patient.files;
     }
 
     return patient;

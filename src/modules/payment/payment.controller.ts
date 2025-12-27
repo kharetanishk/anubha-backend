@@ -12,7 +12,7 @@ import {
   formatDateForTemplate,
   formatTimeForTemplate,
 } from "../../services/whatsapp.service";
-import { generateInvoiceForAppointment } from "../../services/invoice.service";
+// Invoice generation is now manual (removed automatic generation)
 import {
   paymentService,
   PaymentStatus,
@@ -752,7 +752,9 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
       userId,
     });
 
-    // Verify Razorpay signature
+    // CRITICAL: Verify Razorpay signature before proceeding
+    // Signature verification ensures payment data integrity
+    // If signature is invalid, payment is REJECTED and appointment remains PENDING
     const isValidSignature = paymentService.verifyPaymentSignature(
       orderId,
       paymentId,
@@ -762,7 +764,10 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
 
     if (!isValidSignature) {
       console.error(
-        `[PAYMENT:${requestId}] ❌ Signature mismatch - Payment verification failed`
+        `[PAYMENT:${requestId}] ❌ Signature mismatch - Payment verification REJECTED`
+      );
+      console.error(
+        `[PAYMENT:${requestId}] ❌ Appointment remains PENDING - payment signature invalid`
       );
       return res.status(400).json({
         success: false,
@@ -823,9 +828,14 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
       });
     }
 
-    // Update appointment status in a transaction with row-level locking
+    // CRITICAL: Update appointment status ONLY in a transaction with row-level locking
+    // This ensures:
+    // 1. Appointment is confirmed ONLY after successful verification
+    // 2. Race conditions are prevented (webhook + API both calling)
+    // 3. Idempotency - if already confirmed, no duplicate updates
+    // 4. If transaction fails or times out, appointment remains PENDING
     console.log(
-      `[PAYMENT:${requestId}] Starting transaction for appointment:`,
+      `[PAYMENT:${requestId}] Starting transaction for appointment confirmation:`,
       appointment.id
     );
     const transactionStartTime = Date.now();
@@ -1002,38 +1012,16 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
       console.error("==========================================");
     }
 
-    // Generate invoice after payment confirmation (non-blocking)
-    try {
-      console.log(
-        "[PAYMENT] Generating invoice for appointment:",
-        appointment.id
-      );
-      const invoiceResult = await generateInvoiceForAppointment(appointment.id);
-      if (invoiceResult.success) {
-        console.log(
-          "[PAYMENT] ✅ Invoice generated successfully:",
-          invoiceResult.invoice?.invoiceNumber
-        );
-      } else {
-        console.error(
-          "[PAYMENT] ❌ Invoice generation failed (non-blocking):",
-          invoiceResult.error
-        );
-      }
-    } catch (invoiceError: any) {
-      // Log error but don't fail the payment confirmation
-      console.error("==========================================");
-      console.error("[PAYMENT] ❌ Invoice generation failed (non-blocking):");
-      console.error("  Error:", invoiceError.message);
-      console.error("  Stack:", invoiceError.stack);
-      console.error("==========================================");
-    }
+    // NOTE: Invoice generation is now manual - users can generate it from the appointment details page
+    // This allows users to generate invoices on-demand rather than automatically
 
     const totalTime = Date.now() - startTime;
     console.log(
-      `[PAYMENT:${requestId}] ✅ Payment verified successfully in ${totalTime}ms`
+      `[PAYMENT:${requestId}] ✅ Payment verified and appointment CONFIRMED in ${totalTime}ms`
     );
 
+    // CRITICAL: Only return success AFTER appointment is confirmed in database
+    // This ensures frontend never shows success before backend confirms appointment
     return res.json({
       success: true,
       message: "Payment verified successfully. Your appointment is confirmed.",
@@ -1049,17 +1037,23 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
       }
     );
 
-    // Handle specific error types
+    // Handle specific error types - including transaction timeouts
+    // CRITICAL: On timeout, appointment remains PENDING - webhook may still process payment
+    // Frontend will handle timeout gracefully and redirect user to check appointment status
     if (
       err.message?.includes("Transaction") ||
       err.message?.includes("timeout") ||
+      err.message?.includes("Timeout") ||
       err.code === "P2024" ||
       err.code === "P2028"
     ) {
+      console.error(
+        `[PAYMENT:${requestId}] ⚠️ Verification timeout - appointment remains PENDING, webhook may process payment`
+      );
       return res.status(503).json({
         success: false,
         error:
-          "Payment verification is taking longer than expected. Please wait a moment and check your appointment status.",
+          "Payment verification is taking longer than expected. Please wait a moment and check your appointment status. Your payment may still be processing.",
       });
     }
 
@@ -1884,16 +1878,23 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
               return;
             }
 
-            // Update appointment to CONFIRMED
+            // CRITICAL: Update appointment to CONFIRMED ONLY after payment.captured event
+            // This is the FINAL AUTHORITY for payment confirmation
+            // Webhook ensures payment is confirmed even if verifyPaymentHandler times out
+            // Use PaymentStatus.PAID (not "SUCCESS") for consistency with state machine
             await tx.appointment.update({
               where: { id: appointment.id },
               data: {
                 status: "CONFIRMED",
-                paymentStatus: "SUCCESS",
+                paymentStatus: PaymentStatus.PAID,
                 bookingProgress: null,
                 notes: paymentId, // Store Razorpay Payment ID
               } as any,
             });
+
+            console.log(
+              `[WEBHOOK] ✅ Appointment CONFIRMED via webhook: ${appointment.id}`
+            );
 
             // CRITICAL: Archive any other PENDING appointments for the same logical booking
             // This prevents duplicate PENDING appointments from remaining after confirmation
@@ -1963,32 +1964,8 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
                 );
               }
 
-              // Generate invoice after payment confirmation (non-blocking)
-              try {
-                console.log(
-                  "[WEBHOOK] Generating invoice for appointment:",
-                  appointment.id
-                );
-                const invoiceResult = await generateInvoiceForAppointment(
-                  appointment.id
-                );
-                if (invoiceResult.success) {
-                  console.log(
-                    "[WEBHOOK] ✅ Invoice generated successfully:",
-                    invoiceResult.invoice?.invoiceNumber
-                  );
-                } else {
-                  console.error(
-                    "[WEBHOOK] ❌ Invoice generation failed (non-blocking):",
-                    invoiceResult.error
-                  );
-                }
-              } catch (invoiceError: any) {
-                console.error(
-                  "[WEBHOOK] ❌ Invoice generation failed (non-blocking):",
-                  invoiceError.message
-                );
-              }
+              // NOTE: Invoice generation is now manual - users can generate it from the appointment details page
+              // This allows users to generate invoices on-demand rather than automatically
             });
           },
           {

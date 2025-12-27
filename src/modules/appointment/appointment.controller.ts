@@ -445,6 +445,53 @@ export async function createAppointmentHandler(req: Request, res: Response) {
         });
       }
 
+      // CRITICAL: Check if a CONFIRMED appointment already exists for this patient and plan
+      // This prevents creating new PENDING appointments when a CONFIRMED appointment already exists
+      // For weight loss and other plans: check by userId, patientId, planSlug, and startAt (if provided)
+      // This ensures we don't create pending appointments when confirmed ones exist for the same booking
+      const confirmedWhere: any = {
+        userId,
+        patientId,
+        planSlug,
+        status: "CONFIRMED",
+        isArchived: false, // Only check non-archived appointments
+      };
+
+      // If startAt is provided and valid, also match by startAt to ensure same booking
+      // This prevents creating pending appointments for confirmed bookings at the same time
+      if (appointmentStartAt) {
+        confirmedWhere.startAt = appointmentStartAt;
+      }
+
+      const existingConfirmedAppointment = await prisma.appointment.findFirst({
+        where: confirmedWhere,
+        orderBy: {
+          createdAt: "desc", // Get the most recent one
+        },
+      });
+
+      if (existingConfirmedAppointment) {
+        console.log(
+          " [BACKEND] ⚠️ CONFIRMED appointment already exists for this patient and plan. Returning existing appointment:",
+          existingConfirmedAppointment.id,
+          {
+            userId,
+            patientId,
+            planSlug,
+            startAt: appointmentStartAt || "not specified",
+          }
+        );
+
+        // Return the existing CONFIRMED appointment - don't create a new PENDING one
+        return res.status(200).json({
+          success: true,
+          message: "Confirmed appointment already exists for this plan",
+          data: existingConfirmedAppointment,
+          updated: false, // Indicate this is an existing confirmed appointment
+          alreadyConfirmed: true,
+        });
+      }
+
       // CRITICAL: Check if a PENDING appointment already exists for this logical booking
       // This prevents duplicate PENDING appointments when the booking flow is called multiple times
       // Matches by: userId, patientId, startAt (slotTime), planSlug

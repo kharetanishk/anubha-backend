@@ -35,7 +35,11 @@ async function listAdmins() {
         console.log(`${index + 1}. Admin:`);
         console.log(`   ID: ${admin.id}`);
         console.log(`   Name: ${admin.name}`);
-        console.log(`   Phone: ${admin.phone} (length: ${admin.phone.length})`);
+        console.log(
+          `   Phone: ${admin.phone || "N/A"} (length: ${
+            admin.phone?.length || 0
+          })`
+        );
         console.log(`   Email: ${admin.email}`);
         console.log(`   Created: ${admin.createdAt}`);
         console.log(`   Archived: ${admin.isArchived}`);

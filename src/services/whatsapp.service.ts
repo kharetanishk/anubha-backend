@@ -764,14 +764,14 @@ export async function sendBookingConfirmationMessage(
  * Send reminder WhatsApp message (1 hour before appointment)
  * Uses "reminderbooking" template
  * Template variables:
- * - body_1: Patient Name
+ * - body_1: Patient Name (for user) or Admin Name (for admin)
  * - body_2: Appointment Date
  * - body_3: Slot Time (e.g., "10:00 AM - 10:40 AM")
  */
 export async function sendReminderMessage(
-  patientPhone: string,
+  phoneNumber: string,
   slotStartTime: Date,
-  patientName?: string,
+  nameForBody1: string, // Patient name for user, Admin name for admin
   slotEndTime?: Date
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   const appointmentDate = formatDateForTemplate(slotStartTime);
@@ -779,8 +779,8 @@ export async function sendReminderMessage(
 
   return sendWhatsappTemplate({
     templateName: "reminderbooking",
-    phoneNumber: patientPhone,
-    patientName: patientName || "Patient",
+    phoneNumber: phoneNumber,
+    patientName: nameForBody1, // This will be used as body_1 (patient name for user, admin name for admin)
     appointmentDate,
     slotTime: slotTimeFormatted,
   });

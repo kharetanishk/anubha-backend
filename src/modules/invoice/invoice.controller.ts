@@ -4,6 +4,7 @@ import path from "path";
 import {
   getInvoiceByNumber,
   getInvoiceByAppointmentId,
+  generateInvoiceForAppointment,
 } from "../../services/invoice.service";
 import prisma from "../../database/prismaclient";
 
@@ -183,6 +184,100 @@ export async function getInvoiceByAppointmentHandler(
     return res.status(500).json({
       success: false,
       error: error.message || "Failed to fetch invoice",
+    });
+  }
+}
+
+/**
+ * Generate invoice for an appointment
+ * User-triggered invoice generation
+ */
+export async function generateInvoiceHandler(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthenticated. Please login again.",
+      });
+    }
+
+    const { appointmentId } = req.params;
+
+    if (!appointmentId) {
+      return res.status(400).json({
+        success: false,
+        error: "Appointment ID is required",
+      });
+    }
+
+    // First verify user owns the appointment
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: { userId: true, status: true, paymentStatus: true },
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: "Appointment not found",
+      });
+    }
+
+    if (appointment.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Unauthorized. You don't have permission to generate invoice for this appointment.",
+      });
+    }
+
+    // Check if appointment is confirmed
+    if (appointment.status !== "CONFIRMED") {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot generate invoice for appointment with status: ${appointment.status}. Invoice can only be generated for CONFIRMED appointments.`,
+      });
+    }
+
+    // Check payment status
+    if (
+      appointment.paymentStatus !== "SUCCESS" &&
+      appointment.paymentStatus !== "PAID"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot generate invoice for appointment with payment status: ${appointment.paymentStatus}. Payment must be successful.`,
+      });
+    }
+
+    // Generate invoice
+    const result = await generateInvoiceForAppointment(appointmentId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || "Failed to generate invoice",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Invoice generated successfully",
+      invoice: {
+        id: result.invoice?.id,
+        invoiceNumber: result.invoice?.invoiceNumber,
+        invoiceDate: result.invoice?.invoiceDate,
+        appointmentId: result.invoice?.appointmentId,
+        pdfUrl: result.invoice?.pdfUrl,
+        createdAt: result.invoice?.createdAt,
+      },
+    });
+  } catch (error: any) {
+    console.error("[INVOICE] Error in generateInvoiceHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to generate invoice",
     });
   }
 }

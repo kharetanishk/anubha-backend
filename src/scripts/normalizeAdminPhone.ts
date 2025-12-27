@@ -21,6 +21,11 @@ async function normalizeAdminPhones() {
       console.log(`Processing admin: ${admin.name}`);
       console.log(`  Current phone: ${admin.phone}`);
 
+      if (!admin.phone) {
+        console.log(`  ⚠️ Skipping admin with null phone number\n`);
+        continue;
+      }
+
       try {
         // Normalize the phone number
         const normalizedPhone = normalizePhoneNumber(admin.phone);
