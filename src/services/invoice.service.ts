@@ -311,8 +311,8 @@ async function generateInvoicePDF(invoiceData: {
       doc.end();
 
       stream.on("finish", () => {
-        console.log(`[INVOICE] PDF generated successfully: ${filePath}`);
-        resolve(filePath);
+        // console.log(`[INVOICE] PDF generated successfully: ${filePath}`);
+resolve(filePath);
       });
 
       stream.on("error", (error) => {
@@ -340,10 +340,10 @@ export async function generateInvoiceForAppointment(
     });
 
     if (existingInvoice) {
-      console.log(
-        `[INVOICE] Invoice already exists for appointment ${appointmentId}: ${existingInvoice.invoiceNumber}`
-      );
-      return {
+      // console.log(
+      // `[INVOICE] Invoice already exists for appointment ${appointmentId}: ${existingInvoice.invoiceNumber}`
+      // );
+return {
         success: true,
         invoice: existingInvoice,
       };
@@ -406,11 +406,10 @@ export async function generateInvoiceForAppointment(
     // Upload PDF to Cloudinary
     let pdfUrl: string;
     try {
-      console.log(
-        `[INVOICE] Uploading invoice to Cloudinary: ${invoiceNumber}`
-      );
-
-      const cloudinaryResult = await uploadPDFToCloudinary(pdfPath, {
+      // console.log(
+      // `[INVOICE] Uploading invoice to Cloudinary: ${invoiceNumber}`
+      // );
+const cloudinaryResult = await uploadPDFToCloudinary(pdfPath, {
         folder: "nutriwell_invoices",
         publicId: invoiceNumber,
         context: {
@@ -421,24 +420,23 @@ export async function generateInvoiceForAppointment(
       });
 
       pdfUrl = cloudinaryResult.secure_url;
-      console.log(`[INVOICE] ✅ Invoice uploaded to Cloudinary: ${pdfUrl}`);
-
-      // Delete local file after successful upload to save disk space
+      // console.log(`[INVOICE] ✅ Invoice uploaded to Cloudinary: ${pdfUrl}`);
+// Delete local file after successful upload to save disk space
       try {
         fs.unlinkSync(pdfPath);
-        console.log(`[INVOICE] 🗑️ Local invoice file deleted: ${pdfPath}`);
-      } catch (deleteError) {
+        // console.log(`[INVOICE] 🗑️ Local invoice file deleted: ${pdfPath}`);
+} catch (deleteError) {
         // Non-critical error - log but don't fail
-        console.warn(
-          `[INVOICE] ⚠️ Failed to delete local file: ${deleteError}`
-        );
-      }
+        // console.warn(
+        // `[INVOICE] ⚠️ Failed to delete local file: ${deleteError}`
+        // );
+}
     } catch (cloudinaryError: any) {
       console.error("[INVOICE] ❌ Cloudinary upload failed:", cloudinaryError);
       // Keep local file as fallback
       pdfUrl = `file://${pdfPath}`; // Fallback URL (indicates local storage)
-      console.warn(`[INVOICE] ⚠️ Using local file as fallback: ${pdfPath}`);
-    }
+      // console.warn(`[INVOICE] ⚠️ Using local file as fallback: ${pdfPath}`);
+}
 
     // Save invoice to database with Cloudinary URL
     const invoice = await prisma.invoice.create({
@@ -453,11 +451,10 @@ export async function generateInvoiceForAppointment(
       },
     });
 
-    console.log(
-      `[INVOICE] ✅ Invoice generated successfully: ${invoiceNumber} for appointment ${appointmentId}`
-    );
-
-    return {
+    // console.log(
+    // `[INVOICE] ✅ Invoice generated successfully: ${invoiceNumber} for appointment ${appointmentId}`
+    // );
+return {
       success: true,
       invoice,
     };

@@ -22,18 +22,19 @@ let isRunning = false;
  * Both receive the same template with different body_1 values
  */
 export function startAppointmentReminderCron() {
-  console.log(
-    "[CRON] Starting appointment reminder cron job (runs every 10 minutes)"
-  );
+  // console.log(
+  // "[CRON] Starting appointment reminder cron job (runs every 10 minutes)
+  // "
+  // );
 
   // Run every 10 minutes: */10 * * * *
   cron.schedule("*/10 * * * *", async () => {
     // Skip if previous execution is still running
     if (isRunning) {
-      console.warn(
-        "[CRON] ⚠️ Previous execution still running, skipping this run to prevent overlap"
-      );
-      return;
+      // console.warn(
+      // "[CRON] ⚠️ Previous execution still running, skipping this run to prevent overlap"
+      // );
+return;
     }
 
     isRunning = true;
@@ -46,7 +47,7 @@ export function startAppointmentReminderCron() {
     }
   });
 
-  console.log("[CRON] ✅ Appointment reminder cron job started");
+  // console.log("[CRON] ✅ Appointment reminder cron job started");
 }
 
 /**
@@ -63,14 +64,16 @@ async function checkAndSendReminders() {
     // This makes it robust against small drifts - reminders are sent once even if cron runs slightly late
     const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
 
-    console.log("==========================================");
-    console.log("[CRON REMINDER] Checking for appointments needing reminders");
-    console.log("  Current Time:", now.toISOString());
-    console.log("  Window Start:", tenMinutesAgo.toISOString());
-    console.log("  Window End:", now.toISOString());
-    console.log("==========================================");
-
-    // Find appointments that:
+    // console.log("==========================================");
+// console.log("[CRON REMINDER] Checking for appointments needing reminders");
+// console.log("  Current Time:", now.toISOString()
+// );
+    // console.log("  Window Start:", tenMinutesAgo.toISOString()
+    // );
+    // console.log("  Window End:", now.toISOString()
+    // );
+    // console.log("==========================================");
+// Find appointments that:
     // 1. Are CONFIRMED
     // 2. Reminder not already sent
     // 3. Have reminderTime within the current window (between 10 minutes ago and now)
@@ -116,27 +119,30 @@ async function checkAndSendReminders() {
       // Only log occasionally to show the cron is running
       if (Math.random() < 0.1) {
         // Log ~10% of the time (less frequent since we run every 10 min instead of every minute)
-        console.log(
-          "[CRON REMINDER] No appointments to remind in current window (cron is running)"
-        );
+        // console.log(
+        // "[CRON REMINDER] No appointments to remind in current window (cron is running)
+        // "
+        // );
       }
       return;
     }
 
-    console.log("==========================================");
-    console.log(
-      `[CRON REMINDER] Found ${upcomingAppointments.length} appointment(s) to remind`
-    );
-    console.log("  Current Time:", now.toISOString());
-    console.log(
-      "  Reminder Time Window:",
-      tenMinutesAgo.toISOString(),
-      "to",
-      now.toISOString()
-    );
-    console.log("==========================================");
-
-    // Admin phone is fixed: 916260440241 (handled in sendDoctorNotificationMessage)
+    // console.log("==========================================");
+// console.log(
+// `[CRON REMINDER] Found ${upcomingAppointments.length} appointment(s)
+// to remind`
+// );
+    // console.log("  Current Time:", now.toISOString()
+    // );
+    // console.log(
+    // "  Reminder Time Window:",
+    // tenMinutesAgo.toISOString()
+    // ,
+    // "to",
+    // now.toISOString()
+    // );
+    // console.log("==========================================");
+// Admin phone is fixed: 916260440241 (handled in sendDoctorNotificationMessage)
 
     // Process each appointment
     for (const appointment of upcomingAppointments) {
@@ -154,12 +160,13 @@ async function checkAndSendReminders() {
       }
     }
 
-    console.log("==========================================");
-    console.log(
-      `[CRON REMINDER] ✅ Completed processing ${upcomingAppointments.length} appointment(s)`
-    );
-    console.log("==========================================");
-  } catch (error: any) {
+    // console.log("==========================================");
+// console.log(
+// `[CRON REMINDER] ✅ Completed processing ${upcomingAppointments.length} appointment(s)
+// `
+// );
+    // console.log("==========================================");
+} catch (error: any) {
     console.error("==========================================");
     console.error("[CRON REMINDER] ❌ Error checking reminders");
     console.error("  Error:", error.message);
@@ -178,27 +185,27 @@ async function sendReminderForAppointment(appointment: any) {
   const appointmentStartAt = appointment.slot?.startAt || appointment.startAt;
   const appointmentMode = appointment.slot?.mode || appointment.mode;
 
-  console.log("==========================================");
-  console.log(
-    `[CRON REMINDER] Sending reminder for appointment ${appointmentId}`
-  );
-  console.log("  Appointment ID:", appointmentId);
-  console.log("  Appointment Start:", appointmentStartAt);
-  console.log("  Appointment Mode:", appointmentMode);
-  console.log("  Patient Name:", patientName);
-  console.log("  Patient Phone:", patientPhone || "Not found");
-  console.log("  Admin Phone: 916260440241 (fixed)");
-  console.log("==========================================");
-
-  // Get slot time for reminder message
+  // console.log("==========================================");
+// console.log(
+// `[CRON REMINDER] Sending reminder for appointment ${appointmentId}`
+// );
+// console.log("  Appointment ID:", appointmentId);
+// console.log("  Appointment Start:", appointmentStartAt);
+// console.log("  Appointment Mode:", appointmentMode);
+// console.log("  Patient Name:", patientName);
+// console.log("  Patient Phone:", patientPhone || "Not found");
+// console.log("  Admin Phone: 916260440241 (fixed)
+// ");
+  // console.log("==========================================");
+// Get slot time for reminder message
   const slotStartTime = appointment.slot?.startAt || appointment.startAt;
   const slotEndTime = appointment.slot?.endAt || appointment.endAt;
   if (!slotStartTime) {
-    console.warn("==========================================");
-    console.warn(`[CRON REMINDER] ⚠️ Slot time not found`);
-    console.warn("  Appointment ID:", appointmentId);
-    console.warn("==========================================");
-    // Mark as sent to prevent retrying without slot time
+    // console.warn("==========================================");
+// console.warn(`[CRON REMINDER] ⚠️ Slot time not found`);
+// console.warn("  Appointment ID:", appointmentId);
+// console.warn("==========================================");
+// Mark as sent to prevent retrying without slot time
     await prisma.appointment.updateMany({
       where: {
         id: appointmentId,
@@ -221,8 +228,8 @@ async function sendReminderForAppointment(appointment: any) {
 
   if (patientPhone) {
     try {
-      console.log("[CRON REMINDER] Sending patient reminder...");
-      // Send reminder message using the reminderbooking template
+      // console.log("[CRON REMINDER] Sending patient reminder...");
+// Send reminder message using the reminderbooking template
       // body_1 will be patient name
       const patientResult = await sendReminderMessage(
         patientPhone,
@@ -232,18 +239,21 @@ async function sendReminderForAppointment(appointment: any) {
       );
 
       if (patientResult.success) {
-        console.log("==========================================");
-        console.log(`[CRON REMINDER] ✅ Patient reminder sent successfully`);
-        console.log("  Appointment ID:", appointmentId);
-        console.log("  Patient Phone:", patientPhone);
-        console.log("  Patient Name:", patientName);
-        console.log("  Slot Start Time:", slotStartTimeDate.toISOString());
+        // console.log("==========================================");
+// console.log(`[CRON REMINDER] ✅ Patient reminder sent successfully`);
+// console.log("  Appointment ID:", appointmentId);
+// console.log("  Patient Phone:", patientPhone);
+// console.log("  Patient Name:", patientName);
+// console.log("  Slot Start Time:", slotStartTimeDate.toISOString()
+// );
         if (slotEndTimeDate) {
-          console.log("  Slot End Time:", slotEndTimeDate.toISOString());
+          // console.log("  Slot End Time:", slotEndTimeDate.toISOString()
+          // );
         }
-        console.log("  Template: Reminder (1 hour before)");
-        console.log("==========================================");
-        reminderSentSuccessfully = true;
+        // console.log("  Template: Reminder (1 hour before)
+        // ");
+        // console.log("==========================================");
+reminderSentSuccessfully = true;
       } else {
         console.error("==========================================");
         console.error(`[CRON REMINDER] ❌ Patient reminder failed`);
@@ -264,12 +274,12 @@ async function sendReminderForAppointment(appointment: any) {
       // Don't mark as sent - will retry in next cron run
     }
   } else {
-    console.warn("==========================================");
-    console.warn(`[CRON REMINDER] ⚠️ Patient phone not found`);
-    console.warn("  Appointment ID:", appointmentId);
-    console.warn("  Patient Name:", patientName);
-    console.warn("==========================================");
-    // Mark as sent to prevent retrying without phone number
+    // console.warn("==========================================");
+// console.warn(`[CRON REMINDER] ⚠️ Patient phone not found`);
+// console.warn("  Appointment ID:", appointmentId);
+// console.warn("  Patient Name:", patientName);
+// console.warn("==========================================");
+// Mark as sent to prevent retrying without phone number
     reminderSentSuccessfully = true; // Treat as "sent" to prevent infinite retries
   }
 
@@ -277,18 +287,16 @@ async function sendReminderForAppointment(appointment: any) {
   // body_1 will be admin name instead of patient name
   // Non-blocking - doesn't affect patient reminder status
   try {
-    console.log("[CRON REMINDER] Sending admin reminder...");
-
-    // Get admin details (name and phone)
+    // console.log("[CRON REMINDER] Sending admin reminder...");
+// Get admin details (name and phone)
     const admin = await getSingleAdmin();
     const adminPhone = admin.phone || "916260440241"; // Fallback to fixed phone if not found
     const adminName = admin.name || "Admin";
 
-    console.log("  Admin Phone:", adminPhone);
-    console.log("  Admin Name:", adminName);
-    console.log("  Template: reminderbooking");
-
-    // Send reminderbooking template to admin with admin name in body_1
+    // console.log("  Admin Phone:", adminPhone);
+// console.log("  Admin Name:", adminName);
+// console.log("  Template: reminderbooking");
+// Send reminderbooking template to admin with admin name in body_1
     const adminResult = await sendReminderMessage(
       adminPhone,
       slotStartTimeDate,
@@ -297,14 +305,14 @@ async function sendReminderForAppointment(appointment: any) {
     );
 
     if (adminResult.success) {
-      console.log("==========================================");
-      console.log(`[CRON REMINDER] ✅ Admin reminder sent successfully`);
-      console.log("  Appointment ID:", appointmentId);
-      console.log("  Admin Phone:", adminPhone);
-      console.log("  Admin Name:", adminName);
-      console.log("  Template: reminderbooking");
-      console.log("==========================================");
-    } else {
+      // console.log("==========================================");
+// console.log(`[CRON REMINDER] ✅ Admin reminder sent successfully`);
+// console.log("  Appointment ID:", appointmentId);
+// console.log("  Admin Phone:", adminPhone);
+// console.log("  Admin Name:", adminName);
+// console.log("  Template: reminderbooking");
+// console.log("==========================================");
+} else {
       console.error("==========================================");
       console.error(`[CRON REMINDER] ❌ Admin reminder failed`);
       console.error("  Appointment ID:", appointmentId);
@@ -336,26 +344,28 @@ async function sendReminderForAppointment(appointment: any) {
       });
 
       if (updateResult.count > 0) {
-        console.log("==========================================");
-        console.log(
-          `[CRON REMINDER] ✅ Reminder marked as sent (atomic update)`
-        );
-        console.log("  Appointment ID:", appointmentId);
-        console.log("  reminderSent: true");
-        console.log("  Rows updated:", updateResult.count);
-        console.log("==========================================");
-      } else {
+        // console.log("==========================================");
+// console.log(
+// `[CRON REMINDER] ✅ Reminder marked as sent (atomic update)
+// `
+// );
+        // console.log("  Appointment ID:", appointmentId);
+// console.log("  reminderSent: true");
+// console.log("  Rows updated:", updateResult.count);
+// console.log("==========================================");
+} else {
         // Reminder was already sent by another cron instance (race condition handled)
-        console.log("==========================================");
-        console.log(
-          `[CRON REMINDER] ⚠️ Reminder already sent (duplicate prevented)`
-        );
-        console.log("  Appointment ID:", appointmentId);
-        console.log(
-          "  This is normal if cron runs multiple times simultaneously"
-        );
-        console.log("==========================================");
-      }
+        // console.log("==========================================");
+// console.log(
+// `[CRON REMINDER] ⚠️ Reminder already sent (duplicate prevented)
+// `
+// );
+        // console.log("  Appointment ID:", appointmentId);
+// console.log(
+// "  This is normal if cron runs multiple times simultaneously"
+// );
+// console.log("==========================================");
+}
     } catch (error: any) {
       console.error("==========================================");
       console.error(`[CRON REMINDER] ❌ Failed to mark reminder as sent`);
@@ -365,12 +375,13 @@ async function sendReminderForAppointment(appointment: any) {
       console.error("==========================================");
     }
   } else {
-    console.log("==========================================");
-    console.log(
-      `[CRON REMINDER] ⚠️ Reminder not marked as sent (will retry next run)`
-    );
-    console.log("  Appointment ID:", appointmentId);
-    console.log("  Reason: Patient reminder failed or patient phone missing");
-    console.log("==========================================");
-  }
+    // console.log("==========================================");
+// console.log(
+// `[CRON REMINDER] ⚠️ Reminder not marked as sent (will retry next run)
+// `
+// );
+    // console.log("  Appointment ID:", appointmentId);
+// console.log("  Reason: Patient reminder failed or patient phone missing");
+// console.log("==========================================");
+}
 }

@@ -98,9 +98,10 @@ export const uploadPDFHandler = async (req: Request, res: Response) => {
       uploadedFiles.push(saved);
     }
 
-    console.log(
-      `[PDF UPLOAD] ✅ Successfully uploaded ${uploadedFiles.length} PDF file(s)`
-    );
+    // console.log(
+    // `[PDF UPLOAD] ✅ Successfully uploaded ${uploadedFiles.length} PDF file(s)
+    // `
+    // );
 
     res.status(200).json({
       success: true,

@@ -136,15 +136,14 @@ export class AuthController {
 
   async getMe(req: Request, res: Response) {
     try {
-      console.log("[AUTH /me] Request received:", {
-        hasUser: !!req.user,
-        userId: req.user?.id,
-        userRole: req.user?.role,
-      });
-
-      if (!req.user) {
-        console.log("[AUTH /me] No user found - returning 401");
-        return res.status(401).json({
+      // console.log("[AUTH /me] Request received:", {
+      // hasUser: !!req.user,
+      // userId: req.user?.id,
+      // userRole: req.user?.role,
+      // });
+      // if (!req.user) {
+      // // console.log("[AUTH /me] No user found - returning 401");
+return res.status(401).json({
           success: false,
           message: "Not authenticated",
         });
@@ -159,15 +158,14 @@ export class AuthController {
         });
       }
 
-      console.log("[AUTH /me] Calling authService.getMe with:", {
-        id: req.user.id,
-        role: req.user.role,
-      });
+      // console.log("[AUTH /me] Calling authService.getMe with:", {
+      // id: req.user.id,
+      // role: req.user.role,
+      // });
+      // const response = await authService.getMe(req.user.id, req.user.role);
 
-      const response = await authService.getMe(req.user.id, req.user.role);
-
-      console.log("[AUTH /me] Success - returning user data");
-      return res.status(200).json({
+      // console.log("[AUTH /me] Success - returning user data");
+return res.status(200).json({
         success: true,
         user: response,
       });
@@ -227,15 +225,14 @@ export class AuthController {
   /* ---------------- UPDATE PHONE NUMBER ---------------- */
   async updatePhone(req: Request, res: Response) {
     try {
-      console.log("[AUTH /update-phone] Request received:", {
-        hasUser: !!req.user,
-        userId: req.user?.id,
-        userRole: req.user?.role,
-      });
-
-      if (!req.user) {
-        console.log("[AUTH /update-phone] No user found - returning 401");
-        return res.status(401).json({
+      // console.log("[AUTH /update-phone] Request received:", {
+      // hasUser: !!req.user,
+      // userId: req.user?.id,
+      // userRole: req.user?.role,
+      // });
+      // if (!req.user) {
+      // // console.log("[AUTH /update-phone] No user found - returning 401");
+return res.status(401).json({
           success: false,
           message: "Not authenticated. Please login.",
         });
@@ -252,18 +249,19 @@ export class AuthController {
 
       const { phone } = req.body;
 
-      console.log(
-        "[AUTH /update-phone] Calling authService.updatePhone with:",
-        {
-          userId: req.user.id,
-          phone: phone ? "provided" : "null (delete)",
-        }
-      );
+      // console.log(
+      // "[AUTH /update-phone] Calling authService.updatePhone with:",
+      // {
+      // userId: req.user.id,
+      // phone: phone ? "provided" : "null (delete)
+      // ",
+      // }
+      // );
 
       const updatedUser = await authService.updatePhone(req.user.id, phone);
 
-      console.log("[AUTH /update-phone] Success - phone updated");
-      return res.status(200).json({
+      // console.log("[AUTH /update-phone] Success - phone updated");
+return res.status(200).json({
         success: true,
         message: phone
           ? "Phone number updated successfully."

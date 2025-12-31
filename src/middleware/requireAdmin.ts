@@ -83,10 +83,10 @@ export async function requireAdmin(
 
     // CRITICAL: Verify role from database matches JWT token
     if (user.role !== "ADMIN") {
-      console.warn(
-        `[SECURITY] Role mismatch detected for user ${req.user.id}: JWT=${req.user.role}, DB=${user.role}`
-      );
-      return res.status(403).json({
+      // console.warn(
+      // `[SECURITY] Role mismatch detected for user ${req.user.id}: JWT=${req.user.role}, DB=${user.role}`
+      // );
+return res.status(403).json({
         success: false,
         message: "Forbidden. Admin access required.",
       });

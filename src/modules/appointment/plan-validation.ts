@@ -143,15 +143,14 @@ export function validatePlanDetails(opts: {
 }): void {
   const { planSlug, planName, planPrice, planPackageName, planDuration } = opts;
 
-  console.log(" [PLAN VALIDATION] Validating plan details:", {
-    planSlug,
-    planName,
-    planPrice,
-    planPackageName: planPackageName || "none",
-    planDuration: planDuration || "none",
-  });
-
-  // Find the plan by slug
+  // console.log(" [PLAN VALIDATION] Validating plan details:", {
+  // planSlug,
+  // planName,
+  // planPrice,
+  // planPackageName: planPackageName || "none",
+  // planDuration: planDuration || "none",
+  // });
+// Find the plan by slug
   const plan = PLAN_DEFINITIONS.find((p) => p.slug === planSlug);
 
   if (!plan) {
@@ -162,12 +161,11 @@ export function validatePlanDetails(opts: {
     throw new Error(`Invalid plan slug: ${planSlug}`);
   }
 
-  console.log(" [PLAN VALIDATION] Plan found:", {
-    slug: plan.slug,
-    title: plan.title,
-  });
-
-  // Validate plan name matches
+  // console.log(" [PLAN VALIDATION] Plan found:", {
+  // slug: plan.slug,
+  // title: plan.title,
+  // });
+// Validate plan name matches
   if (plan.title !== planName) {
     console.error(" [PLAN VALIDATION] Plan name mismatch:", {
       expected: plan.title,
@@ -177,17 +175,17 @@ export function validatePlanDetails(opts: {
       `Plan name mismatch. Expected: ${plan.title}, Got: ${planName}`
     );
   }
-  console.log(" [PLAN VALIDATION] Plan name matches");
-
-  // Prices are stored in rupees (not paise) for consistency with frontend
+  // console.log(" [PLAN VALIDATION] Plan name matches");
+// Prices are stored in rupees (not paise) for consistency with frontend
   const providedPrice = Math.round(planPrice);
 
   // If package name is provided, validate against specific package
   if (planPackageName) {
-    console.log(" [PLAN VALIDATION] Looking for package:", {
-      providedPackageName: planPackageName,
-      availablePackages: plan.packages.map((pkg) => pkg.name),
-    });
+    // console.log(" [PLAN VALIDATION] Looking for package:", {
+    // providedPackageName: planPackageName,
+    // availablePackages: plan.packages.map((pkg)
+    // => pkg.name),
+    // });
 
     const package_ = plan.packages.find((pkg) => pkg.name === planPackageName);
 
@@ -203,9 +201,8 @@ export function validatePlanDetails(opts: {
       );
     }
 
-    console.log(" [PLAN VALIDATION] Package found:", package_.name);
-
-    // Validate duration if provided (flexible matching)
+    // console.log(" [PLAN VALIDATION] Package found:", package_.name);
+// Validate duration if provided (flexible matching)
     if (planDuration && package_.duration) {
       const normalizedDuration = planDuration.toLowerCase().trim();
       const normalizedPackageDuration = package_.duration.toLowerCase().trim();
@@ -216,10 +213,10 @@ export function validatePlanDetails(opts: {
       ) {
         // Only throw if they're clearly different
         if (normalizedDuration !== normalizedPackageDuration) {
-          console.warn(
-            `Duration mismatch for package "${planPackageName}". Expected: ${package_.duration}, Got: ${planDuration}`
-          );
-        }
+          // console.warn(
+          // `Duration mismatch for package "${planPackageName}". Expected: ${package_.duration}, Got: ${planDuration}`
+          // );
+}
       }
     }
 
@@ -231,10 +228,10 @@ export function validatePlanDetails(opts: {
     }
   } else {
     // If no package name, check if price matches any package in the plan
-    console.log(
-      " [PLAN VALIDATION] No package name provided, checking if price matches any package"
-    );
-    const matchingPackage = plan.packages.find(
+    // console.log(
+    // " [PLAN VALIDATION] No package name provided, checking if price matches any package"
+    // );
+const matchingPackage = plan.packages.find(
       (pkg) => pkg.price === providedPrice
     );
 
@@ -250,13 +247,13 @@ export function validatePlanDetails(opts: {
         `Invalid price ₹${planPrice} for plan "${planSlug}". Valid prices: ${validPrices}. This may indicate a security issue.`
       );
     }
-    console.log(
-      " [PLAN VALIDATION] Price matches package:",
-      matchingPackage.name
-    );
-  }
+    // console.log(
+    // " [PLAN VALIDATION] Price matches package:",
+    // matchingPackage.name
+    // );
+}
 
-  console.log(" [PLAN VALIDATION] All validations passed");
+  // console.log(" [PLAN VALIDATION] All validations passed");
 }
 
 /**

@@ -54,13 +54,12 @@ export class AuthService {
     originalPhone = phone.replace(/\D/g, "");
     const alternativePhone = originalPhone.length === 10 ? originalPhone : null;
 
-    console.log("[AUTH] Searching for owner with phone:", {
-      original: phone,
-      normalized: normalizedPhone,
-      alternative: alternativePhone,
-    });
-
-    // Build search conditions - try both normalized and alternative formats
+    // console.log("[AUTH] Searching for owner with phone:", {
+    // original: phone,
+    // normalized: normalizedPhone,
+    // alternative: alternativePhone,
+    // });
+// Build search conditions - try both normalized and alternative formats
     const phoneConditions: any[] = [{ phone: normalizedPhone }];
     if (alternativePhone && alternativePhone !== normalizedPhone) {
       phoneConditions.push({ phone: alternativePhone });
@@ -82,15 +81,14 @@ export class AuthService {
       select: { id: true, name: true, phone: true },
     });
 
-    console.log("[AUTH] Search results:", {
-      user: user ? { id: user.id, name: user.name, phone: user.phone } : null,
-      admin: admin
-        ? { id: admin.id, name: admin.name, phone: admin.phone }
-        : null,
-    });
-
-    if (user) return { ...user, role: "USER" as const };
-    if (admin) return { ...admin, role: "ADMIN" as const };
+    // console.log("[AUTH] Search results:", {
+    // user: user ? { id: user.id, name: user.name, phone: user.phone } : null,
+    // admin: admin
+    // ? { id: admin.id, name: admin.name, phone: admin.phone }
+    // : null,
+    // });
+    // if (user) return { ...user, role: "USER" as const };
+    // if (admin) return { ...admin, role: "ADMIN" as const };
 
     return null;
   }
@@ -180,15 +178,15 @@ export class AuthService {
         // Don't throw error - OTP is still created and can be verified
         // Log the error for debugging but allow the flow to continue
       } else {
-        console.log("[AUTH] OTP sent successfully via WhatsApp");
-      }
+        // console.log("[AUTH] OTP sent successfully via WhatsApp");
+}
     } catch (error: any) {
       console.error("[AUTH] Error sending OTP via WhatsApp:", error);
       // Don't throw error - OTP is still created and can be verified
     }
 
-    console.log("OTP:", otp);
-    return otp;
+    // console.log("OTP:", otp);
+return otp;
   }
 
   /* ---------------- DUAL CHANNEL OTP (NEW) ---------------- */
@@ -291,10 +289,10 @@ export class AuthService {
       console.error("[AUTH] Email Exception:", e);
     }
 
-    console.log(
-      `[AUTH] Dual OTP Sent. Phone: ${phoneSent}, Email: ${emailSent}. Code: ${otp}`
-    );
-    return { otp, phoneSent, emailSent };
+    // console.log(
+    // `[AUTH] Dual OTP Sent. Phone: ${phoneSent}, Email: ${emailSent}. Code: ${otp}`
+    // );
+return { otp, phoneSent, emailSent };
   }
 
   /* ---------------- UNIFIED SIGNUP (NEW) ---------------- */
@@ -619,9 +617,8 @@ export class AuthService {
 
   /* ---------------- LOGIN OTP ---------------- */
   async sendLoginOtp(phone: string) {
-    console.log("[AUTH] sendLoginOtp called with phone:", phone);
-
-    // Normalize phone number first to ensure consistency
+    // console.log("[AUTH] sendLoginOtp called with phone:", phone);
+// Normalize phone number first to ensure consistency
     let normalizedPhone: string;
     try {
       normalizedPhone = this.normalizePhone(phone);
@@ -655,19 +652,18 @@ export class AuthService {
     // Find owner to determine role (but allow OTP sending even if not found)
     const owner = await this.findOwnerByPhone(normalizedPhone);
 
-    console.log(
-      "[AUTH] Owner found:",
-      owner
-        ? {
-            id: owner.id,
-            name: owner.name,
-            phone: owner.phone,
-            role: owner.role,
-          }
-        : null
-    );
-
-    // Allow OTP sending even if user doesn't exist
+    // console.log(
+    // "[AUTH] Owner found:",
+    // owner
+    // ? {
+    // id: owner.id,
+    // name: owner.name,
+    // phone: owner.phone,
+    // role: owner.role,
+    // }
+    // : null
+    // );
+// Allow OTP sending even if user doesn't exist
     // We'll check user existence during OTP verification instead
     // This prevents user enumeration and allows linking phone flow
     // Use normalized phone number for OTP creation
@@ -720,9 +716,8 @@ export class AuthService {
 
   /* ---------------- GET ME ---------------- */
   async getMe(ownerId: string, role: "USER" | "ADMIN") {
-    console.log("[AUTH SERVICE] getMe called with:", { ownerId, role });
-
-    if (role === "USER") {
+    // console.log("[AUTH SERVICE] getMe called with:", { ownerId, role });
+if (role === "USER") {
       const user = await prisma.user.findUnique({
         where: { id: ownerId },
         select: { id: true, name: true, phone: true, email: true },
@@ -733,12 +728,12 @@ export class AuthService {
         throw new AppError("User not found", 404);
       }
 
-      console.log("[AUTH SERVICE] User found:", {
-        id: user.id,
-        name: user.name,
-      });
-      return { ...user, role: "USER" };
-    }
+      // console.log("[AUTH SERVICE] User found:", {
+      // id: user.id,
+      // name: user.name,
+      // });
+      // return { ...user, role: "USER" };
+      // }
 
     if (role === "ADMIN") {
       const admin = await prisma.admin.findUnique({
@@ -751,12 +746,12 @@ export class AuthService {
         throw new AppError("Admin not found", 404);
       }
 
-      console.log("[AUTH SERVICE] Admin found:", {
-        id: admin.id,
-        name: admin.name,
-      });
-      return { ...admin, role: "ADMIN" };
-    }
+      // console.log("[AUTH SERVICE] Admin found:", {
+      // id: admin.id,
+      // name: admin.name,
+      // });
+      // return { ...admin, role: "ADMIN" };
+      // }
 
     console.error("[AUTH SERVICE] Invalid role:", role);
     throw new AppError(`Invalid role: ${role}. Expected USER or ADMIN.`, 400);
@@ -771,9 +766,8 @@ export class AuthService {
    * Security: Prevents user enumeration
    */
   async forgotPassword(email: string): Promise<{ message: string }> {
-    console.log("[AUTH] forgotPassword called with email:", email);
-
-    // Normalize email (trim and lowercase)
+    // console.log("[AUTH] forgotPassword called with email:", email);
+// Normalize email (trim and lowercase)
     const normalizedEmail = email.trim().toLowerCase();
 
     // Check if user exists with this email
@@ -785,13 +779,14 @@ export class AuthService {
 
     // If user exists, generate reset token
     if (user) {
-      console.log(
-        "[AUTH] User found for password reset:",
-        user.id,
-        "(email:",
-        normalizedEmail,
-        ")"
-      );
+      // console.log(
+      // "[AUTH] User found for password reset:",
+      // user.id,
+      // "(email:",
+      // normalizedEmail,
+      // ")
+      // "
+      // );
 
       // Generate cryptographically secure random token (32 bytes = 64 hex characters)
       const rawToken = crypto.randomBytes(32).toString("hex");
@@ -816,28 +811,32 @@ export class AuthService {
       });
 
       // Generate reset password link with raw token
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      // Production: Use FRONTEND_URL environment variable
+      // Development: Fallback to localhost
+      const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000");
+      if (!frontendUrl) {
+        throw new Error("FRONTEND_URL environment variable is required in production");
+      }
       const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
 
       // Send password reset email (only if user exists)
       try {
-        console.log(
-          "[AUTH] Attempting to send password reset email to:",
-          normalizedEmail
-        );
-        console.log("[AUTH] Reset link:", resetLink);
-
-        const emailSent = await sendPasswordResetEmail(
+        // console.log(
+        // "[AUTH] Attempting to send password reset email to:",
+        // normalizedEmail
+        // );
+// console.log("[AUTH] Reset link:", resetLink);
+const emailSent = await sendPasswordResetEmail(
           normalizedEmail,
           resetLink
         );
 
         if (emailSent) {
-          console.log(
-            "[AUTH] ✅ Password reset email sent successfully to:",
-            normalizedEmail
-          );
-        } else {
+          // console.log(
+          // "[AUTH] ✅ Password reset email sent successfully to:",
+          // normalizedEmail
+          // );
+} else {
           console.error(
             "[AUTH] ❌ Failed to send password reset email to:",
             normalizedEmail,
@@ -858,17 +857,20 @@ export class AuthService {
 
       // Log reset link in development only (for testing)
       if (process.env.NODE_ENV === "development") {
-        console.log("[AUTH] Password reset link generated (DEV ONLY):");
-        console.log("  - User ID:", user.id);
-        console.log("  - Reset Link:", resetLink);
-        console.log("  - Expires at:", resetPasswordExpiry.toISOString());
+        // console.log("[AUTH] Password reset link generated (DEV ONLY)
+        // :");
+        // console.log("  - User ID:", user.id);
+// console.log("  - Reset Link:", resetLink);
+// console.log("  - Expires at:", resetPasswordExpiry.toISOString()
+// );
       }
     } else {
-      console.log(
-        "[AUTH] No user found for password reset (email:",
-        normalizedEmail,
-        ")"
-      );
+      // console.log(
+      // "[AUTH] No user found for password reset (email:",
+      // normalizedEmail,
+      // ")
+      // "
+      // );
       // Do nothing - same response time and message
     }
 
@@ -889,9 +891,8 @@ export class AuthService {
     rawToken: string,
     newPassword: string
   ): Promise<{ message: string }> {
-    console.log("[AUTH] resetPassword called");
-
-    // Validate inputs
+    // console.log("[AUTH] resetPassword called");
+// Validate inputs
     if (!rawToken || !rawToken.trim()) {
       throw new AppError("Reset token is required", 400);
     }
@@ -920,20 +921,20 @@ export class AuthService {
 
     // If user not found or token doesn't match, return generic error
     if (!user) {
-      console.log("[AUTH] Invalid reset token provided");
-      throw new AppError("Invalid or expired reset token", 400);
+      // console.log("[AUTH] Invalid reset token provided");
+throw new AppError("Invalid or expired reset token", 400);
     }
 
     // Check if token has expired
     if (!user.resetPasswordExpiry) {
-      console.log("[AUTH] Reset token has no expiry date");
-      throw new AppError("Invalid or expired reset token", 400);
+      // console.log("[AUTH] Reset token has no expiry date");
+throw new AppError("Invalid or expired reset token", 400);
     }
 
     const now = new Date();
     if (now > user.resetPasswordExpiry) {
-      console.log("[AUTH] Reset token has expired");
-      // Clear expired token
+      // console.log("[AUTH] Reset token has expired");
+// Clear expired token
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -957,9 +958,10 @@ export class AuthService {
       },
     });
 
-    console.log(
-      `[AUTH] Password reset successfully for user ${user.id} (email: ${user.email})`
-    );
+    // console.log(
+    // `[AUTH] Password reset successfully for user ${user.id} (email: ${user.email})
+    // `
+    // );
 
     return {
       message:
@@ -974,12 +976,11 @@ export class AuthService {
    * @param phone - Phone number to link
    */
   async sendLinkPhoneEmailOtp(email: string, phone: string) {
-    console.log("[AUTH SERVICE] sendLinkPhoneEmailOtp called:", {
-      email,
-      phone,
-    });
-
-    // Normalize email
+    // console.log("[AUTH SERVICE] sendLinkPhoneEmailOtp called:", {
+    // email,
+    // phone,
+    // });
+// Normalize email
     const normalizedEmail = email.trim().toLowerCase();
 
     // Check if user exists with this email
@@ -1035,8 +1036,8 @@ export class AuthService {
         console.error("[AUTH] Failed to send email OTP");
         // Don't throw error - OTP is still created and can be verified
       } else {
-        console.log("[AUTH] Email OTP sent successfully");
-      }
+        // console.log("[AUTH] Email OTP sent successfully");
+}
     } catch (error: any) {
       console.error("[AUTH] Error sending email OTP:", error);
       // Don't throw error - OTP is still created
@@ -1054,12 +1055,11 @@ export class AuthService {
    * @param otp - OTP code from email
    */
   async verifyLinkPhoneEmailOtp(email: string, phone: string, otp: string) {
-    console.log("[AUTH SERVICE] verifyLinkPhoneEmailOtp called:", {
-      email,
-      phone,
-    });
-
-    // Normalize inputs
+    // console.log("[AUTH SERVICE] verifyLinkPhoneEmailOtp called:", {
+    // email,
+    // phone,
+    // });
+// Normalize inputs
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPhone = this.normalizePhone(phone);
 
@@ -1174,13 +1174,13 @@ export class AuthService {
       },
     });
 
-    console.log(
-      "[AUTH] Email OTP created for:",
-      email,
-      "to link phone:",
-      phoneToLink
-    );
-    return otp;
+    // console.log(
+    // "[AUTH] Email OTP created for:",
+    // email,
+    // "to link phone:",
+    // phoneToLink
+    // );
+return otp;
   }
 
   /* ---------------- ADD EMAIL TO PHONE-ONLY ACCOUNT ---------------- */
@@ -1190,12 +1190,11 @@ export class AuthService {
    * @param email - Email address to add and verify
    */
   async sendAddEmailOtp(userId: string, email: string) {
-    console.log("[AUTH SERVICE] sendAddEmailOtp called:", {
-      userId,
-      email,
-    });
-
-    // Normalize email
+    // console.log("[AUTH SERVICE] sendAddEmailOtp called:", {
+    // userId,
+    // email,
+    // });
+// Normalize email
     const normalizedEmail = email.trim().toLowerCase();
 
     // Validate email format
@@ -1262,10 +1261,10 @@ export class AuthService {
         console.error("[AUTH] Failed to send email verification OTP");
         // Don't throw error - OTP is still created and can be verified
       } else {
-        console.log(
-          "[AUTH] Email verification OTP sent successfully for adding email"
-        );
-      }
+        // console.log(
+        // "[AUTH] Email verification OTP sent successfully for adding email"
+        // );
+}
     } catch (error: any) {
       console.error("[AUTH] Error sending email verification OTP:", error);
       // Don't throw error - OTP is still created
@@ -1283,12 +1282,11 @@ export class AuthService {
    * @param otp - OTP code from email
    */
   async verifyAddEmailOtp(userId: string, email: string, otp: string) {
-    console.log("[AUTH SERVICE] verifyAddEmailOtp called:", {
-      userId,
-      email,
-    });
-
-    // Normalize email
+    // console.log("[AUTH SERVICE] verifyAddEmailOtp called:", {
+    // userId,
+    // email,
+    // });
+// Normalize email
     const normalizedEmail = email.trim().toLowerCase();
 
     // Get current user
@@ -1367,9 +1365,8 @@ export class AuthService {
     const userRole = (updatedUser.role as "USER" | "ADMIN") || "USER";
     const token = generateToken(updatedUser.id, userRole);
 
-    console.log("[AUTH] Email successfully added to user account");
-
-    return {
+    // console.log("[AUTH] Email successfully added to user account");
+return {
       message: "Email verified and added successfully",
       token,
       user: { ...updatedUser, role: userRole },
@@ -1412,13 +1409,13 @@ export class AuthService {
       },
     });
 
-    console.log(
-      "[AUTH] Add Email OTP created for user:",
-      userId,
-      "email:",
-      email
-    );
-    return otp;
+    // console.log(
+    // "[AUTH] Add Email OTP created for user:",
+    // userId,
+    // "email:",
+    // email
+    // );
+return otp;
   }
 
   /* ---------------- UPDATE PHONE NUMBER ---------------- */
@@ -1428,10 +1425,11 @@ export class AuthService {
    * - If phone is null/empty: Delete phone number (set to null)
    */
   async updatePhone(userId: string, phone: string | null) {
-    console.log("[AUTH SERVICE] updatePhone called with:", {
-      userId,
-      phone: phone ? "provided" : "null (delete)",
-    });
+    // console.log("[AUTH SERVICE] updatePhone called with:", {
+    // userId,
+    // phone: phone ? "provided" : "null (delete)
+    // ",
+    // });
 
     // Check if user exists
     const user = await prisma.user.findUnique({
@@ -1446,15 +1444,15 @@ export class AuthService {
 
     // If phone is null or empty, delete it
     if (!phone || phone.trim() === "") {
-      console.log("[AUTH SERVICE] Deleting phone number for user:", userId);
-      const updatedUser = await prisma.user.update({
+      // console.log("[AUTH SERVICE] Deleting phone number for user:", userId);
+const updatedUser = await prisma.user.update({
         where: { id: userId },
         data: { phone: null } as any, // Phone is nullable in schema
         select: { id: true, name: true, phone: true, email: true },
       });
 
-      console.log("[AUTH SERVICE] Phone number deleted successfully");
-      return { ...updatedUser, role: "USER" as const };
+      // console.log("[AUTH SERVICE] Phone number deleted successfully");
+return { ...updatedUser, role: "USER" as const };
     }
 
     // Normalize phone number
@@ -1508,20 +1506,19 @@ export class AuthService {
     }
 
     // Update phone number with error handling for unique constraint violations
-    console.log("[AUTH SERVICE] Updating phone number:", {
-      oldPhone: user.phone,
-      newPhone: normalizedPhone,
-    });
+    // console.log("[AUTH SERVICE] Updating phone number:", {
+    // oldPhone: user.phone,
+    // newPhone: normalizedPhone,
+    // });
+    // try {
+    // const updatedUser = await prisma.user.update({
+    // where: { id: userId },
+    // data: { phone: normalizedPhone },
+    // select: { id: true, name: true, phone: true, email: true },
+    // });
 
-    try {
-      const updatedUser = await prisma.user.update({
-        where: { id: userId },
-        data: { phone: normalizedPhone },
-        select: { id: true, name: true, phone: true, email: true },
-      });
-
-      console.log("[AUTH SERVICE] Phone number updated successfully");
-      return { ...updatedUser, role: "USER" as const };
+      // console.log("[AUTH SERVICE] Phone number updated successfully");
+return { ...updatedUser, role: "USER" as const };
     } catch (error: any) {
       // Handle Prisma unique constraint violation (P2002)
       if (error.code === "P2002" && error.meta?.target?.includes("phone")) {
@@ -1547,13 +1544,12 @@ export class AuthService {
     email: string, // email is required, not nullable
     password: string
   ) {
-    console.log("[AUTH] signupWithPassword called with:", {
-      name,
-      phone,
-      email,
-    });
-
-    // Check if user already exists by email
+    // console.log("[AUTH] signupWithPassword called with:", {
+    // name,
+    // phone,
+    // email,
+    // });
+// Check if user already exists by email
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -1605,9 +1601,8 @@ export class AuthService {
 
   /* ---------------- PASSWORD-BASED LOGIN ---------------- */
   async loginWithPassword(identifier: string, password: string) {
-    console.log("[AUTH] loginWithPassword called with identifier:", identifier);
-
-    // Check if identifier is email or phone
+    // console.log("[AUTH] loginWithPassword called with identifier:", identifier);
+// Check if identifier is email or phone
     const isEmail = identifier.includes("@");
 
     // First, check if this is an admin email/phone
@@ -1626,9 +1621,8 @@ export class AuthService {
 
     // If admin found, authenticate as admin
     if (admin) {
-      console.log("[AUTH] Admin login attempt detected");
-
-      const adminWithAuth = admin as any;
+      // console.log("[AUTH] Admin login attempt detected");
+const adminWithAuth = admin as any;
 
       if (!adminWithAuth.password) {
         throw new AppError(
@@ -1644,12 +1638,12 @@ export class AuthService {
       );
 
       if (!isPasswordValid) {
-        console.log("[AUTH] Admin password verification failed");
-        throw new AppError("Invalid credentials", 401);
+        // console.log("[AUTH] Admin password verification failed");
+throw new AppError("Invalid credentials", 401);
       }
 
-      console.log("[AUTH] Admin login successful");
-      const token = generateToken(admin.id, "ADMIN");
+      // console.log("[AUTH] Admin login successful");
+const token = generateToken(admin.id, "ADMIN");
 
       // Return admin without password
       const { password: _, ...safeAdmin } = adminWithAuth;
@@ -1698,8 +1692,8 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      console.log("[AUTH] User password verification failed");
-      throw new AppError("Invalid credentials", 401);
+      // console.log("[AUTH] User password verification failed");
+throw new AppError("Invalid credentials", 401);
     }
 
     // Use the actual role from the database (USER or ADMIN)
@@ -1725,9 +1719,8 @@ export class AuthService {
    * - NEVER create duplicate users for the same email
    */
   async googleAuth(email: string, name: string, googleId?: string) {
-    console.log("[AUTH] googleAuth called with:", { email, name });
-
-    // CRITICAL: Normalize email (trim, lowercase) to ensure consistent matching
+    // console.log("[AUTH] googleAuth called with:", { email, name });
+// CRITICAL: Normalize email (trim, lowercase) to ensure consistent matching
     const normalizedEmail = email.trim().toLowerCase();
 
     // STEP 1: Find user by email (email is globally unique)
@@ -1737,11 +1730,10 @@ export class AuthService {
 
     if (user) {
       // User exists with this email - link Google login to existing account
-      console.log(
-        `[AUTH] User exists with email ${normalizedEmail}, linking Google login`
-      );
-
-      // CRITICAL: Preserve existing role from database (never override)
+      // console.log(
+      // `[AUTH] User exists with email ${normalizedEmail}, linking Google login`
+      // );
+// CRITICAL: Preserve existing role from database (never override)
       // At this point, user is guaranteed to be non-null (we're inside if (user) block)
       if (!user) throw new Error("User should not be null here"); // Type guard
       const userRole = (user.role as "USER" | "ADMIN") || "USER";
@@ -1756,11 +1748,10 @@ export class AuthService {
     }
 
     // STEP 2: User doesn't exist - create new user
-    console.log(
-      `[AUTH] No user found with email ${normalizedEmail}, creating new user`
-    );
-
-    // Create new user for Google OAuth
+    // console.log(
+    // `[AUTH] No user found with email ${normalizedEmail}, creating new user`
+    // );
+// Create new user for Google OAuth
     // email is required for Google OAuth, so it's guaranteed to be a string (not null)
     user = await prisma.user.create({
       data: {

@@ -23,8 +23,8 @@ async function sendTemplateMsg() {
       }
     );
 
-    console.log("Sent:", response.data);
-  } catch (err: any) {
+    // console.log("Sent:", response.data);
+} catch (err: any) {
     console.error("Error:", err.response?.data || err.message);
   }
 }

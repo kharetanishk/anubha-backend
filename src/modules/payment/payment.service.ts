@@ -241,10 +241,11 @@ export class PaymentService {
     } catch (error: any) {
       // Order not found in Razorpay (404) or belongs to different account
       // This can happen when Razorpay keys are changed
-      console.warn(
-        `[PAYMENT] Order not found in Razorpay (may belong to different account): ${paymentId}`,
-        error.message || error
-      );
+      // console.warn(
+      // `[PAYMENT] Order not found in Razorpay (may belong to different account)
+      // : ${paymentId}`,
+      // error.message || error
+      // );
       // Mark for expiration so a new order can be created
       return {
         shouldReuse: false,

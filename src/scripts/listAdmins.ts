@@ -10,9 +10,8 @@ dotenv.config();
 
 async function listAdmins() {
   try {
-    console.log("🔍 Fetching all admins from database...\n");
-
-    const admins = await prisma.admin.findMany({
+    // console.log("🔍 Fetching all admins from database...\n");
+const admins = await prisma.admin.findMany({
       select: {
         id: true,
         name: true,
@@ -27,24 +26,26 @@ async function listAdmins() {
     });
 
     if (admins.length === 0) {
-      console.log("❌ No admins found in database.");
-      console.log("   Run: npm run seed");
-    } else {
-      console.log(`✅ Found ${admins.length} admin(s):\n`);
+      // console.log("❌ No admins found in database.");
+// console.log("   Run: npm run seed");
+} else {
+      // console.log(`✅ Found ${admins.length} admin(s)
+      // :\n`);
       admins.forEach((admin, index) => {
-        console.log(`${index + 1}. Admin:`);
-        console.log(`   ID: ${admin.id}`);
-        console.log(`   Name: ${admin.name}`);
-        console.log(
-          `   Phone: ${admin.phone || "N/A"} (length: ${
-            admin.phone?.length || 0
-          })`
-        );
-        console.log(`   Email: ${admin.email}`);
-        console.log(`   Created: ${admin.createdAt}`);
-        console.log(`   Archived: ${admin.isArchived}`);
-        console.log("");
-      });
+        // console.log(`${index + 1}. Admin:`);
+// console.log(`   ID: ${admin.id}`);
+// console.log(`   Name: ${admin.name}`);
+// console.log(
+// `   Phone: ${admin.phone || "N/A"} (length: ${
+// admin.phone?.length || 0
+// })
+// `
+// );
+        // console.log(`   Email: ${admin.email}`);
+// console.log(`   Created: ${admin.createdAt}`);
+// console.log(`   Archived: ${admin.isArchived}`);
+// console.log("");
+});
     }
   } catch (error: any) {
     console.error("❌ Error listing admins:", error.message);

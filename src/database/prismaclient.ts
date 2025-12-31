@@ -8,8 +8,13 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: ["query", "info", "warn", "error"],
-    errorFormat: "pretty",
+    // Production: Only log errors and warnings
+    // Development: Log queries, info, warnings, and errors
+    log:
+      process.env.NODE_ENV === "production"
+        ? ["error", "warn"]
+        : ["query", "info", "warn", "error"],
+    errorFormat: process.env.NODE_ENV === "production" ? "minimal" : "pretty",
   });
 
 // Prisma middleware to normalize phone numbers at database level

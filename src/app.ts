@@ -30,14 +30,46 @@ app.use(cookieParser());
 
 // CORS must be applied BEFORE other middleware
 // CRITICAL: credentials: true allows cookies (auth_token) to be sent/received
-app.use(
-  cors({
-    origin: [
+// Production: Use CORS_ORIGINS environment variable, or fallback to FRONTEND_URL
+// Development: Allow localhost and local network IPs
+const getAllowedOrigins = (): (string | RegExp)[] => {
+  const origins: (string | RegExp)[] = [];
+
+  // Production: Use CORS_ORIGINS if set (comma-separated list)
+  // Otherwise, use FRONTEND_URL as fallback
+  if (process.env.CORS_ORIGINS) {
+    const envOrigins = process.env.CORS_ORIGINS.split(",").map((origin) =>
+      origin.trim()
+    );
+    origins.push(...envOrigins);
+  } else if (
+    process.env.FRONTEND_URL &&
+    process.env.NODE_ENV === "production"
+  ) {
+    // Fallback to FRONTEND_URL in production if CORS_ORIGINS is not set
+    origins.push(process.env.FRONTEND_URL.trim());
+  }
+
+  // Development: Allow localhost and local network
+  if (process.env.NODE_ENV !== "production") {
+    origins.push(
       "http://localhost:3000",
       "http://127.0.0.1:3000",
       "http://192.168.29.116:3000",
-      /^http:\/\/192\.168\.\d+\.\d+:3000$/,
-    ],
+      /^http:\/\/192\.168\.\d+\.\d+:3000$/
+    );
+    // Also add FRONTEND_URL in development if set (for testing production URLs locally)
+    if (process.env.FRONTEND_URL) {
+      origins.push(process.env.FRONTEND_URL.trim());
+    }
+  }
+
+  return origins.length > 0 ? origins : ["http://localhost:3000"]; // Fallback
+};
+
+app.use(
+  cors({
+    origin: getAllowedOrigins(),
     credentials: true, // REQUIRED: Allows cookies (auth_token)
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
@@ -95,10 +127,9 @@ app.use(multerErrorHandler);
  * Validate Razorpay configuration
  */
 function validatePaymentConfig() {
-  console.log("==========================================");
-  console.log("🔍 Validating Razorpay Configuration...");
-  console.log("==========================================");
-
+  // console.log("==========================================");
+  // console.log("🔍 Validating Razorpay Configuration...");
+  // console.log("==========================================");
   const razorpayValidation = validateRazorpayConfig();
 
   if (!razorpayValidation.isValid) {
@@ -120,21 +151,22 @@ function validatePaymentConfig() {
   }
 
   if (razorpayValidation.warnings.length > 0) {
-    console.warn("⚠️  Razorpay configuration warnings:");
+    // console.warn("⚠️  Razorpay configuration warnings:");
     razorpayValidation.warnings.forEach((warning, index) => {
-      console.warn(`  ${index + 1}. ${warning}`);
+      // console.warn(`  ${index + 1}. ${warning}`);
     });
   }
 
-  console.log("✅ Razorpay configuration validated successfully");
-  console.log("  - Key ID: Set");
-  console.log("  - Key Secret: Set");
+  // console.log("✅ Razorpay configuration validated successfully");
+  // console.log("  - Key ID: Set");
+  // console.log("  - Key Secret: Set");
   if (env.RAZORPAY_WEBHOOK_SECRET) {
-    console.log("  - Webhook Secret: Set");
+    // console.log("  - Webhook Secret: Set");
   } else {
-    console.log("  - Webhook Secret: Not set (webhook verification disabled)");
+    // console.log("  - Webhook Secret: Not set (webhook verification disabled)
+    // ");
   }
-  console.log("==========================================");
+  // console.log("==========================================");
 }
 
 /**
@@ -157,21 +189,19 @@ async function checkDatabaseConnection(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log("==========================================");
-      console.log(
-        `🔍 Testing database connection... (Attempt ${attempt}/${maxRetries})`
-      );
-      console.log("==========================================");
-
+      // console.log("==========================================");
+      // console.log(
+      // `🔍 Testing database connection... (Attempt ${attempt}/${maxRetries})
+      // `
+      // );
+      // console.log("==========================================");
       // Connect to database
       await prisma.$connect();
-      console.log("✅ Database is running and connected!");
-
+      // console.log("✅ Database is running and connected!");
       // Test query to ensure database is responsive
       await prisma.$queryRaw`SELECT 1`;
-      console.log("✅ Database connection test successful!");
-      console.log("==========================================");
-
+      // console.log("✅ Database connection test successful!");
+      // console.log("==========================================");
       // Success! Exit the retry loop
       return;
     } catch (error: any) {
@@ -199,12 +229,13 @@ async function checkDatabaseConnection(
       if (isTransientError && attempt < maxRetries) {
         // Calculate delay with exponential backoff
         const delay = initialDelay * Math.pow(2, attempt - 1);
-        console.log(
-          `🔄 Retrying in ${
-            delay / 1000
-          } seconds... (Database may be waking up)`
-        );
-        console.log("==========================================");
+        // console.log(
+        // `🔄 Retrying in ${
+        // delay / 1000
+        // } seconds... (Database may be waking up)
+        // `
+        // );
+        // console.log("==========================================");
         await sleep(delay);
       } else if (attempt >= maxRetries) {
         // Max retries reached
@@ -257,8 +288,7 @@ async function ensureDatabaseConnection(
       errorCode === "P1002" ||
       errorCode === "P1017"
     ) {
-      console.log("[DATABASE] Connection lost, attempting to reconnect...");
-
+      // console.log("[DATABASE] Connection lost, attempting to reconnect...");
       try {
         // Attempt to reconnect (with single retry)
         await prisma.$disconnect();
@@ -266,7 +296,7 @@ async function ensureDatabaseConnection(
         await prisma.$connect();
         await prisma.$queryRaw`SELECT 1`;
 
-        console.log("[DATABASE] ✅ Reconnection successful");
+        // console.log("[DATABASE] ✅ Reconnection successful");
         next();
       } catch (reconnectError) {
         console.error("[DATABASE] ❌ Reconnection failed:", reconnectError);
@@ -303,10 +333,10 @@ async function startServer() {
 
     // Start Express server
     app.listen(PORT, "0.0.0.0", () => {
-      console.log("==========================================");
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📝 Environment: ${env.NODE_ENV}`);
-      console.log("==========================================");
+      // console.log("==========================================");
+      // console.log(`🚀 Server running on http://localhost:${PORT}`);
+      // console.log(`📝 Environment: ${env.NODE_ENV}`);
+      // console.log("==========================================");
     });
   } catch (error: any) {
     console.error("==========================================");
@@ -323,19 +353,17 @@ async function startServer() {
  * Properly closes database connections on server shutdown
  */
 async function gracefulShutdown(signal: string) {
-  console.log("\n==========================================");
-  console.log(`⚠️  ${signal} signal received: closing server gracefully`);
-  console.log("==========================================");
-
+  // console.log("\n==========================================");
+  // console.log(`⚠️  ${signal} signal received: closing server gracefully`);
+  // console.log("==========================================");
   try {
     // Close database connection
-    console.log("Disconnecting from database...");
+    // console.log("Disconnecting from database...");
     await prisma.$disconnect();
-    console.log("✅ Database disconnected");
-
-    console.log("==========================================");
-    console.log("✅ Server closed gracefully");
-    console.log("==========================================");
+    // console.log("✅ Database disconnected");
+    // console.log("==========================================");
+    // console.log("✅ Server closed gracefully");
+    // console.log("==========================================");
     process.exit(0);
   } catch (error) {
     console.error("❌ Error during graceful shutdown:", error);

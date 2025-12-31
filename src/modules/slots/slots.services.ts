@@ -59,12 +59,13 @@ export async function generateSlotsForRange(opts: {
     throw new Error("endDate cannot be before startDate");
   }
 
-  console.log(" [SLOT GENERATION] Date range (IST):", {
-    startDate,
-    endDate,
-    startIST: start.toISOString(),
-    endIST: end.toISOString(),
-  });
+  // console.log(" [SLOT GENERATION] Date range (IST)
+  // :", {
+  // startDate,
+  // endDate,
+  // startIST: start.toISOString(),
+  // endIST: end.toISOString(),
+  // });
 
   // Fetch all doctor day offs in range once for efficiency
   const dayOffs = await prisma.doctorDayOff.findMany({
@@ -101,14 +102,15 @@ export async function generateSlotsForRange(opts: {
   const [month, day, year] = nowISTString.split("/");
   const todayStr = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 
-  console.log(" [SLOT GENERATION] Starting slot generation:", {
-    startDate,
-    endDate,
-    modes,
-    currentTimeUTC: now.toISOString(),
-    todayInIST: todayStr,
-    nowISTString,
-  });
+  // console.log(" [SLOT GENERATION] Starting slot generation:", {
+  // startDate,
+  // endDate,
+  // modes,
+  // currentTimeUTC: now.toISOString()
+  // ,
+  // todayInIST: todayStr,
+  // nowISTString,
+  // });
 
   // Start cursor from start date, iterate day by day
   const cursor = new Date(start);
@@ -131,35 +133,36 @@ export async function generateSlotsForRange(opts: {
     // Also check if this date matches the requested startDate (user's intent)
     const isRequestedStartDate = dateStr === startDate;
 
-    console.log(" [SLOT GENERATION] Processing date:", {
-      date: dateStr,
-      isToday,
-      isRequestedStartDate,
-      today: todayStr,
-      startDate,
-      dateMatch: dateStr === todayStr,
-      cursorUTC: cursor.toISOString(),
-      cursorIST: cursorISTString,
-    });
+    // console.log(" [SLOT GENERATION] Processing date:", {
+    // date: dateStr,
+    // isToday,
+    // isRequestedStartDate,
+    // today: todayStr,
+    // startDate,
+    // dateMatch: dateStr === todayStr,
+    // cursorUTC: cursor.toISOString()
+    // ,
+    // cursorIST: cursorISTString,
+    // });
 
     // Skip Sundays
     if (!isSunday(dateStr) && !dayOffSet.has(dateStr)) {
-      console.log(
-        " [SLOT GENERATION] Date is valid (not Sunday, not day off), generating slots"
-      );
+      // console.log(
+      // " [SLOT GENERATION] Date is valid (not Sunday, not day off)
+      // , generating slots"
+      // );
 
       for (const mode of modes) {
-        console.log(" [SLOT GENERATION] Generating slots for mode:", mode);
-        const slots = generateSlotsForDate(dateStr, mode);
-        console.log(
-          "📋 [SLOT GENERATION] Generated",
-          slots.length,
-          "slots for",
-          dateStr,
-          mode
-        );
-
-        let slotsAdded = 0;
+        // console.log(" [SLOT GENERATION] Generating slots for mode:", mode);
+const slots = generateSlotsForDate(dateStr, mode);
+        // console.log(
+        // "📋 [SLOT GENERATION] Generated",
+        // slots.length,
+        // "slots for",
+        // dateStr,
+        // mode
+        // );
+let slotsAdded = 0;
         let slotsSkipped = 0;
 
         for (const { startAt, endAt } of slots) {
@@ -179,41 +182,45 @@ export async function generateSlotsForRange(opts: {
             const timeDiff = slotTime - currentTime; // positive if slot is in future
             const minutesDiff = Math.round(timeDiff / 1000 / 60);
 
-            console.log(
-              " [SLOT GENERATION] Checking slot (today or requested date):",
-              {
-                slotTime: startAt.toISOString(),
-                currentTime: now.toISOString(),
-                timeDiffMinutes: minutesDiff,
-                isPast: timeDiff <= 0,
-                isToday,
-                isRequestedStartDate,
-              }
-            );
+            // console.log(
+            // " [SLOT GENERATION] Checking slot (today or requested date)
+            // :",
+            // {
+            // slotTime: startAt.toISOString(),
+            // currentTime: now.toISOString(),
+            // timeDiffMinutes: minutesDiff,
+            // isPast: timeDiff <= 0,
+            // isToday,
+            // isRequestedStartDate,
+            // }
+            // );
 
             if (slotTime <= currentTime) {
-              console.log(" [SLOT GENERATION] Skipping past slot:", {
-                startAt: startAt.toISOString(),
-                now: now.toISOString(),
-                minutesAgo: Math.abs(minutesDiff),
-              });
-              shouldSkip = true;
-              slotsSkipped++;
-            } else {
-              console.log(
-                " [SLOT GENERATION] Slot is in future, will create:",
-                {
-                  startAt: startAt.toISOString(),
-                  minutesFromNow: minutesDiff,
-                }
-              );
+              // console.log(" [SLOT GENERATION] Skipping past slot:", {
+              // startAt: startAt.toISOString()
+              // ,
+              // now: now.toISOString(),
+              // minutesAgo: Math.abs(minutesDiff),
+              // });
+              // shouldSkip = true;
+              // slotsSkipped++;
+              // } else {
+              // console.log(
+              // " [SLOT GENERATION] Slot is in future, will create:",
+              // {
+              // startAt: startAt.toISOString()
+              // ,
+              // minutesFromNow: minutesDiff,
+              // }
+              // );
             }
           } else {
-            console.log(" [SLOT GENERATION] Future date, creating all slots:", {
-              date: dateStr,
-              startAt: startAt.toISOString(),
-            });
-          }
+            // console.log(" [SLOT GENERATION] Future date, creating all slots:", {
+            // date: dateStr,
+            // startAt: startAt.toISOString()
+            // ,
+            // });
+            // }
 
           // For future dates, create all slots regardless of time
           if (!shouldSkip) {
@@ -227,18 +234,19 @@ export async function generateSlotsForRange(opts: {
           }
         }
 
-        console.log(" [SLOT GENERATION] Slots for", dateStr, mode + ":", {
-          total: slots.length,
-          added: slotsAdded,
-          skipped: slotsSkipped,
-        });
-      }
-    } else {
-      const reason = isSunday(dateStr) ? "Sunday" : "day off";
-      console.log(
-        " [SLOT GENERATION] Skipping date (" + reason + "):",
-        dateStr
-      );
+        // console.log(" [SLOT GENERATION] Slots for", dateStr, mode + ":", {
+        // total: slots.length,
+        // added: slotsAdded,
+        // skipped: slotsSkipped,
+        // });
+        // }
+        // } else {
+        // const reason = isSunday(dateStr) ? "Sunday" : "day off";
+      // console.log(
+      // " [SLOT GENERATION] Skipping date (" + reason + ")
+      // :",
+      // dateStr
+      // );
     }
 
     // Move to next day - increment the date string and create new Date in IST
@@ -342,23 +350,23 @@ export async function getAvailableSlotsForDate(opts: {
   const adminId = await getSingleAdminId();
   const { date, mode } = opts;
 
-  console.log(" [SLOTS SERVICE] Fetching available slots:", { date, mode });
-
-  // Create date range in IST timezone (slots are stored in IST)
+  // console.log(" [SLOTS SERVICE] Fetching available slots:", { date, mode });
+// Create date range in IST timezone (slots are stored in IST)
   // date is YYYY-MM-DD, we need to create IST dates
   // Use start of day in IST and end of day in IST
   const dayStart = new Date(date + "T00:00:00+05:30"); // IST start of day
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000); // Next day start (exclusive)
 
-  console.log(" [SLOTS SERVICE] Date range (IST):", {
-    dayStart: dayStart.toISOString(),
-    dayEnd: dayEnd.toISOString(),
-  });
+  // console.log(" [SLOTS SERVICE] Date range (IST)
+  // :", {
+  // dayStart: dayStart.toISOString(),
+  // dayEnd: dayEnd.toISOString(),
+  // });
 
   // Check Sunday
   if (isSunday(date)) {
-    console.log(" [SLOTS SERVICE] Date is Sunday, returning empty array");
-    return [];
+    // console.log(" [SLOTS SERVICE] Date is Sunday, returning empty array");
+return [];
   }
 
   // Check DoctorDayOff
@@ -373,16 +381,16 @@ export async function getAvailableSlotsForDate(opts: {
   });
 
   if (dayOff) {
-    console.log(
-      " [SLOTS SERVICE] Date is marked as day off, returning empty array"
-    );
-    return [];
+    // console.log(
+    // " [SLOTS SERVICE] Date is marked as day off, returning empty array"
+    // );
+return [];
   }
 
   // Fetch only admin-generated slots (no auto-generation)
   // Only return slots that were explicitly created by admin with isBooked: false
-  console.log(" [SLOTS SERVICE] Querying database for admin-created slots...");
-  const slots = await prisma.slot.findMany({
+  // console.log(" [SLOTS SERVICE] Querying database for admin-created slots...");
+const slots = await prisma.slot.findMany({
     where: {
       adminId,
       mode,
@@ -397,23 +405,25 @@ export async function getAvailableSlotsForDate(opts: {
     },
   });
 
-  console.log(" [SLOTS SERVICE] Found slots from database:", {
-    total: slots.length,
-    slotIds: slots.map((s) => s.id),
-  });
+  // console.log(" [SLOTS SERVICE] Found slots from database:", {
+  // total: slots.length,
+  // slotIds: slots.map((s)
+  // => s.id),
+  // });
 
   // Filter out slots that are in the past (for today)
   const validSlots = slots.filter((s) => !isPastDate(s.startAt));
 
-  console.log(" [SLOTS SERVICE] Valid (non-past) slots:", {
-    count: validSlots.length,
-    slots: validSlots.map((s) => ({
-      id: s.id,
-      startAt: s.startAt.toISOString(),
-      mode: s.mode,
-      isBooked: s.isBooked,
-    })),
-  });
+  // console.log(" [SLOTS SERVICE] Valid (non-past)
+  // slots:", {
+  // count: validSlots.length,
+  // slots: validSlots.map((s) => ({
+  // id: s.id,
+  // startAt: s.startAt.toISOString(),
+  // mode: s.mode,
+  // isBooked: s.isBooked,
+  // })),
+  // });
 
   // Map to frontend-friendly format
   const formattedSlots = validSlots.map((slot) => ({
@@ -424,11 +434,11 @@ export async function getAvailableSlotsForDate(opts: {
     mode: slot.mode,
   }));
 
-  console.log(
-    " [SLOTS SERVICE] Returning formatted slots:",
-    formattedSlots.length
-  );
-  return formattedSlots;
+  // console.log(
+  // " [SLOTS SERVICE] Returning formatted slots:",
+  // formattedSlots.length
+  // );
+return formattedSlots;
 }
 
 // ADMIN: get slot date range (earliest and latest slot dates)

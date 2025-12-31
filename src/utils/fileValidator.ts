@@ -26,16 +26,16 @@ const MAGIC_BYTES: Record<string, number[][]> = {
  */
 export function validateFileContent(buffer: Buffer, mimeType: string): boolean {
   if (!buffer || buffer.length === 0) {
-    console.warn(`[FILE VALIDATOR] Empty buffer for MIME type: ${mimeType}`);
-    return false;
+    // console.warn(`[FILE VALIDATOR] Empty buffer for MIME type: ${mimeType}`);
+return false;
   }
 
   const normalizedMimeType = mimeType.toLowerCase();
   const expectedSignatures = MAGIC_BYTES[normalizedMimeType];
   if (!expectedSignatures) {
     // Unknown MIME type - reject for security
-    console.warn(`[FILE VALIDATOR] Unknown MIME type: ${mimeType}`);
-    return false;
+    // console.warn(`[FILE VALIDATOR] Unknown MIME type: ${mimeType}`);
+return false;
   }
 
   // For PNG files, prioritize the 4-byte check as it's more reliable

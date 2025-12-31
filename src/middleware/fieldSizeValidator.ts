@@ -202,11 +202,12 @@ export function validateFieldSizes(
 
     // If validation errors found, return error response
     if (errors.length > 0) {
-      console.warn("[FIELD VALIDATION] Field size validation failed:", {
-        path: req.path,
-        method: req.method,
-        errors: errors.slice(0, 5), // Log first 5 errors
-      });
+      // console.warn("[FIELD VALIDATION] Field size validation failed:", {
+      // path: req.path,
+      // method: req.method,
+      // errors: errors.slice(0, 5)
+      // , // Log first 5 errors
+      // });
 
       return res.status(400).json({
         success: false,

@@ -47,10 +47,10 @@ export async function downloadInvoiceHandler(req: Request, res: Response) {
     // SECURITY: Verify user owns this invoice
     // Check if the appointment belongs to the user
     if (invoice.appointment.userId !== userId) {
-      console.warn(
-        `[INVOICE] Unauthorized access attempt: User ${userId} tried to access invoice ${invoiceNumber}`
-      );
-      return res.status(403).json({
+      // console.warn(
+      // `[INVOICE] Unauthorized access attempt: User ${userId} tried to access invoice ${invoiceNumber}`
+      // );
+return res.status(403).json({
         success: false,
         error:
           "Unauthorized. You don't have permission to access this invoice.",
@@ -60,10 +60,10 @@ export async function downloadInvoiceHandler(req: Request, res: Response) {
     // Return Cloudinary URL (preferred) or fallback to local file
     if (invoice.pdfUrl && !invoice.pdfUrl.startsWith("file://")) {
       // Cloudinary URL exists - return it for frontend to handle
-      console.log(
-        `[INVOICE] Returning Cloudinary URL for invoice ${invoiceNumber}`
-      );
-      return res.json({
+      // console.log(
+      // `[INVOICE] Returning Cloudinary URL for invoice ${invoiceNumber}`
+      // );
+return res.json({
         success: true,
         url: invoice.pdfUrl,
         invoiceNumber: invoice.invoiceNumber,
@@ -80,9 +80,10 @@ export async function downloadInvoiceHandler(req: Request, res: Response) {
       });
     }
 
-    console.log(
-      `[INVOICE] Streaming local file for invoice ${invoiceNumber} (Cloudinary fallback)`
-    );
+    // console.log(
+    // `[INVOICE] Streaming local file for invoice ${invoiceNumber} (Cloudinary fallback)
+    // `
+    // );
 
     // Set headers for PDF download
     const fileName = `${invoice.invoiceNumber}.pdf`;

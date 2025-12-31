@@ -16,10 +16,9 @@ export async function sendPasswordResetEmail(
   to: string,
   resetLink: string
 ): Promise<boolean> {
-  console.log("[MAILER] sendPasswordResetEmail called");
-  console.log("[MAILER] Recipient:", to);
-
-  if (!process.env.RESEND_API_KEY) {
+  // console.log("[MAILER] sendPasswordResetEmail called");
+// console.log("[MAILER] Recipient:", to);
+if (!process.env.RESEND_API_KEY) {
     console.error(
       "[MAILER] ❌ Cannot send email: RESEND_API_KEY not configured"
     );
@@ -28,8 +27,8 @@ export async function sendPasswordResetEmail(
   }
 
   try {
-    console.log("[MAILER] Creating email options...");
-    const { data, error } = await resend.emails.send({
+    // console.log("[MAILER] Creating email options...");
+const { data, error } = await resend.emails.send({
       from: getFromEmail(),
       to: to,
       subject: "Reset your password",
@@ -100,9 +99,9 @@ export async function sendPasswordResetEmail(
       return false;
     }
 
-    console.log("[MAILER] ✅ Password reset email sent successfully");
-    console.log("[MAILER] Email ID:", data?.id);
-    return true;
+    // console.log("[MAILER] ✅ Password reset email sent successfully");
+// console.log("[MAILER] Email ID:", data?.id);
+return true;
   } catch (error: any) {
     console.error("[MAILER] ❌ Failed to send password reset email:");
     console.error("[MAILER] Error type:", error.constructor?.name);
@@ -196,9 +195,9 @@ export async function sendAddEmailVerificationOtp(
       return false;
     }
 
-    console.log("[MAILER] ✅ Email verification OTP sent successfully");
-    console.log("[MAILER] Email ID:", data?.id);
-    return true;
+    // console.log("[MAILER] ✅ Email verification OTP sent successfully");
+// console.log("[MAILER] Email ID:", data?.id);
+return true;
   } catch (error: any) {
     console.error("[MAILER] ❌ Failed to send email verification OTP:");
     console.error("[MAILER] Error:", error.message);
@@ -286,9 +285,9 @@ export async function sendEmailOtp(to: string, otp: string): Promise<boolean> {
       return false;
     }
 
-    console.log("[MAILER] ✅ Email OTP sent successfully");
-    console.log("[MAILER] Email ID:", data?.id);
-    return true;
+    // console.log("[MAILER] ✅ Email OTP sent successfully");
+// console.log("[MAILER] Email ID:", data?.id);
+return true;
   } catch (error: any) {
     console.error("[MAILER] ❌ Failed to send email OTP:");
     console.error("[MAILER] Error:", error.message);

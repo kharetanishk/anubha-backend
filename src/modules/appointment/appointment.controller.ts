@@ -7,11 +7,11 @@ import { validatePlanDetails } from "./plan-validation";
 
 export async function createAppointmentHandler(req: Request, res: Response) {
   try {
-    console.log(" [BACKEND] Appointment creation request received");
-    console.log(
-      " [BACKEND] User:",
-      req.user ? { id: req.user.id, role: req.user.role } : "NOT AUTHENTICATED"
-    );
+    // console.log(" [BACKEND] Appointment creation request received");
+    // console.log(
+    //   " [BACKEND] User:",
+    //   req.user ? { id: req.user.id, role: req.user.role } : "NOT AUTHENTICATED"
+    // );
 
     const userId = req.user?.id;
     if (!userId) {
@@ -38,14 +38,14 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       bookingProgress, // Track where user is in the booking flow
     } = req.body;
 
-    console.log(" [BACKEND] Request body:", {
-      patientId,
-      slotId: slotId || "none",
-      planSlug,
-      planName,
-      planPrice,
-      appointmentMode,
-    });
+    // console.log(" [BACKEND] Request body:", {
+    //   patientId,
+    //   slotId: slotId || "none",
+    //   planSlug,
+    //   planName,
+    //   planPrice,
+    //   appointmentMode,
+    // });
 
     if (!patientId) {
       console.error(
@@ -59,8 +59,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
 
     // SECURITY: Verify patient exists and belongs to the user
     // Use transaction to prevent race condition where patient is deleted between check and appointment creation
-    console.log(" [BACKEND] Verifying patient exists...");
-
+    // console.log(" [BACKEND] Verifying patient exists...");
     // Verify patient within the appointment creation transaction to prevent race conditions
     // This ensures patient exists at the moment of appointment creation
     let patient;
@@ -79,11 +78,12 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           message: "Patient not found or unauthorized",
         });
       }
-      console.log(" [BACKEND] Patient verified:", {
-        id: patient.id,
-        name: patient.name,
-      });
+      // console.log(" [BACKEND] Patient verified:", {
+      //   id: patient.id,
+      //   name: patient.name,
+      // });
     } catch (error: any) {
+      // console.error(" [BACKEND] Error verifying patient:", error);
       console.error(" [BACKEND] Error verifying patient:", error);
       return res.status(500).json({
         success: false,
@@ -129,7 +129,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       });
     }
 
-    console.log(" [BACKEND] Validating plan details...");
+    // console.log(" [BACKEND] Validating plan details...");
     try {
       validatePlanDetails({
         planSlug,
@@ -138,7 +138,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
         planPackageName: planPackageName || undefined,
         planDuration: planDuration,
       });
-      console.log(" [BACKEND] Plan details validated successfully");
+      // console.log(" [BACKEND] Plan details validated successfully");
     } catch (validationError: any) {
       console.error(
         " [BACKEND] Plan validation error (possible security issue):",
@@ -158,8 +158,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
     let slotMode: AppointmentMode | null = null;
 
     if (slotId) {
-      console.log(" [BACKEND] Validating slot:", slotId);
-
+      // console.log(" [BACKEND] Validating slot:", slotId);
       // Use transaction with SELECT FOR UPDATE to prevent race conditions
       // This locks the slot row until transaction completes
       const slotResult = await prisma.$transaction(
@@ -235,12 +234,12 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       }
 
       const slot = slotResult.slot!;
-      console.log(" [BACKEND] Slot validated and locked:", {
-        id: slot.id,
-        startAt: slot.startAt,
-        endAt: slot.endAt,
-        mode: slot.mode,
-      });
+      // console.log(" [BACKEND] Slot validated and locked:", {
+      //   id: slot.id,
+      //   startAt: slot.startAt,
+      //   endAt: slot.endAt,
+      //   mode: slot.mode,
+      // });
 
       // DATA INTEGRITY: Validate that appointment dates match slot dates when slot is assigned
       // If startAt/endAt are provided, they MUST match the slot dates exactly
@@ -275,9 +274,10 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           });
         }
 
-        console.log(
-          " [BACKEND] ✓ Provided dates match slot dates (validation passed)"
-        );
+        // console.log(
+        // " [BACKEND] ✓ Provided dates match slot dates (validation passed)
+        // "
+        // );
       }
 
       // Always use slot dates to ensure appointment dates match slot dates
@@ -290,7 +290,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       // Create appointment without slot (for recall flow)
       // Use provided startAt/endAt or create placeholder dates
       if (startAt && endAt) {
-        console.log(" [BACKEND] Using provided startAt/endAt dates");
+        // console.log(" [BACKEND] Using provided startAt/endAt dates");
         appointmentStartAt = new Date(startAt);
         appointmentEndAt = new Date(endAt);
 
@@ -331,9 +331,10 @@ export async function createAppointmentHandler(req: Request, res: Response) {
         // SECURITY: Require either slotId OR valid startAt/endAt dates
         // Placeholder appointments with arbitrary dates are not allowed
         if (startAt && endAt) {
-          console.log(
-            " [BACKEND] Using provided startAt/endAt dates (no slotId)"
-          );
+          // console.log(
+          // " [BACKEND] Using provided startAt/endAt dates (no slotId)
+          // "
+          // );
           appointmentStartAt = new Date(startAt);
           appointmentEndAt = new Date(endAt);
 
@@ -373,34 +374,35 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           // SECURITY: No slotId and no startAt/endAt provided
           // For backward compatibility with recall flow, create placeholder dates
           // but log a warning and ensure they will be updated when slot is selected
-          console.warn(
-            " [BACKEND] ⚠️ Creating appointment without slotId or dates (placeholder dates will be used)"
-          );
-          console.warn(
-            " [BACKEND] This appointment MUST have a slot assigned before confirmation"
-          );
-
+          // console.warn(
+          // " [BACKEND] ⚠️ Creating appointment without slotId or dates (placeholder dates will be used)
+          // "
+          // );
+          // console.warn(
+          // " [BACKEND] This appointment MUST have a slot assigned before confirmation"
+          // );
           // Create placeholder dates (will be updated when slot is selected)
           // These are clearly placeholders and will be validated when slot is assigned
           appointmentStartAt = new Date();
           appointmentEndAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour later
 
-          console.log(
-            " [BACKEND] Using placeholder dates (will be updated when slot is selected):",
-            {
-              startAt: appointmentStartAt,
-              endAt: appointmentEndAt,
-            }
-          );
+          // console.log(
+          // " [BACKEND] Using placeholder dates (will be updated when slot is selected)
+          // :",
+          // {
+          // startAt: appointmentStartAt,
+          // endAt: appointmentEndAt,
+          // }
+          // );
         }
       }
     }
 
-    console.log(" [BACKEND] Getting doctor ID...");
+    // console.log(" [BACKEND] Getting doctor ID...");
     let doctorId: string;
     try {
       doctorId = await getSingleDoctorId();
-      console.log(" [BACKEND] Doctor ID:", doctorId);
+      // console.log(" [BACKEND] Doctor ID:", doctorId);
     } catch (doctorError: any) {
       console.error(" [BACKEND] Failed to get doctor ID:", doctorError);
       return res.status(500).json({
@@ -409,20 +411,20 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       });
     }
 
-    console.log(" [BACKEND] Creating appointment in database...");
-    console.log(" [BACKEND] Appointment data:", {
-      userId,
-      doctorId,
-      patientId,
-      slotId: finalSlotId || "none",
-      startAt: appointmentStartAt,
-      endAt: appointmentEndAt,
-      mode: appointmentMode,
-      planSlug,
-      planName,
-      planPrice: Number(planPrice),
-      planDuration,
-    });
+    // console.log(" [BACKEND] Creating appointment in database...");
+    // console.log(" [BACKEND] Appointment data:", {
+    //   userId,
+    //   doctorId,
+    //   patientId,
+    //   slotId: finalSlotId || "none",
+    //   startAt: appointmentStartAt,
+    //   endAt: appointmentEndAt,
+    //   mode: appointmentMode,
+    //   planSlug,
+    //   planName,
+    //   planPrice: Number(planPrice),
+    //   planDuration,
+    // });
 
     // SECURITY: Create appointment in transaction to ensure patient still exists
     // This prevents race condition where patient is deleted between validation and creation
@@ -471,18 +473,17 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       });
 
       if (existingConfirmedAppointment) {
-        console.log(
-          " [BACKEND] ⚠️ CONFIRMED appointment already exists for this booking. Returning existing appointment:",
-          existingConfirmedAppointment.id,
-          {
-            userId,
-            patientId,
-            planSlug,
-            startAt: appointmentStartAt,
-            slotId: finalSlotId || "none",
-          }
-        );
-
+        // console.log(
+        // " [BACKEND] ⚠️ CONFIRMED appointment already exists for this booking. Returning existing appointment:",
+        // existingConfirmedAppointment.id,
+        // {
+        // userId,
+        // patientId,
+        // planSlug,
+        // startAt: appointmentStartAt,
+        // slotId: finalSlotId || "none",
+        // }
+        // );
         // Return the existing CONFIRMED appointment - don't create a new PENDING one
         return res.status(200).json({
           success: true,
@@ -519,16 +520,16 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       });
 
       if (existingPendingAppointment) {
-        console.log(
-          " [BACKEND] ⚠️ PENDING appointment already exists for this booking (userId, patientId, startAt, planSlug). Updating existing appointment:",
-          existingPendingAppointment.id,
-          {
-            userId,
-            patientId,
-            startAt: appointmentStartAt,
-            planSlug,
-          }
-        );
+        // console.log(
+        //   " [BACKEND] ⚠️ PENDING appointment already exists for this booking (userId, patientId, startAt, planSlug). Updating existing appointment:",
+        //   existingPendingAppointment.id,
+        //   {
+        //     userId,
+        //     patientId,
+        //     startAt: appointmentStartAt,
+        //     planSlug,
+        //   }
+        // );
 
         // Determine booking progress based on what's provided
         let progress: BookingProgress | null = null;
@@ -565,11 +566,10 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           },
         });
 
-        console.log(
-          " [BACKEND] Updated existing PENDING appointment:",
-          appointment.id
-        );
-
+        // console.log(
+        // " [BACKEND] Updated existing PENDING appointment:",
+        // appointment.id
+        // );
         // Return early - don't create a new appointment
         return res.status(200).json({
           success: true,
@@ -644,22 +644,22 @@ export async function createAppointmentHandler(req: Request, res: Response) {
     // 3. updateAppointmentStatusHandler (when status is manually set to CONFIRMED)
 
     if (finalSlotId) {
-      console.log(
-        "ℹ️ [BACKEND] Slot assigned to appointment (will be marked as booked after payment confirmation):",
-        finalSlotId
-      );
+      // console.log(
+      //   "ℹ️ [BACKEND] Slot assigned to appointment (will be marked as booked after payment confirmation):",
+      //   finalSlotId
+      // );
     } else {
-      console.log(
-        "ℹ️ [BACKEND] No slotId provided, appointment created without slot (will be set later)"
-      );
+      // console.log(
+      //   "ℹ️ [BACKEND] No slotId provided, appointment created without slot (will be set later)"
+      // );
     }
 
-    console.log(" [BACKEND] Appointment created successfully:", {
-      id: appointment.id,
-      patientId: appointment.patientId,
-      status: appointment.status,
-      slotId: appointment.slotId,
-    });
+    // console.log(" [BACKEND] Appointment created successfully:", {
+    //   id: appointment.id,
+    //   patientId: appointment.patientId,
+    //   status: appointment.status,
+    //   slotId: appointment.slotId,
+    // });
 
     return res.status(201).json({
       success: true,
@@ -667,13 +667,14 @@ export async function createAppointmentHandler(req: Request, res: Response) {
       data: appointment,
     });
   } catch (err: any) {
+    // console.error(" [BACKEND] CREATE APPOINTMENT ERROR:", err);
+    // console.error(" [BACKEND] Error details:", {
+    //   name: err.name,
+    //   message: err.message,
+    //   code: err.code,
+    //   stack: err.stack,
+    // });
     console.error(" [BACKEND] CREATE APPOINTMENT ERROR:", err);
-    console.error(" [BACKEND] Error details:", {
-      name: err.name,
-      message: err.message,
-      code: err.code,
-      stack: err.stack,
-    });
     return res.status(500).json({
       success: false,
       message: err.message || "Internal server error",
@@ -801,9 +802,10 @@ export async function getMyAppointments(req: Request, res: Response) {
       },
     });
 
-    console.log(
-      `[USER APPOINTMENTS] Returning ${appointments.length} appointments for user ${req.user.id} (includePending: ${includePending})`
-    );
+    // console.log(
+    // `[USER APPOINTMENTS] Returning ${appointments.length} appointments for user ${req.user.id} (includePending: ${includePending})
+    // `
+    // );
 
     return res.json({ success: true, appointments });
   } catch (err) {
@@ -858,17 +860,16 @@ export async function getPendingAppointments(req: Request, res: Response) {
       },
     });
 
-    console.log(
-      `[PENDING APPOINTMENTS] Returning ${appointments.length} pending appointments for user ${req.user.id}`
-    );
-
+    // console.log(
+    // `[PENDING APPOINTMENTS] Returning ${appointments.length} pending appointments for user ${req.user.id}`
+    // );
     // Log each appointment's booking progress for debugging
     appointments.forEach((apt: any) => {
-      console.log(
-        `[PENDING APPOINTMENTS] Appointment ${apt.id}: bookingProgress = ${
-          apt.bookingProgress || "null"
-        }, slotId = ${apt.slotId || "null"}`
-      );
+      // console.log(
+      // `[PENDING APPOINTMENTS] Appointment ${apt.id}: bookingProgress = ${
+      // apt.bookingProgress || "null"
+      // }, slotId = ${apt.slotId || "null"}`
+      // );
     });
 
     return res.json({ success: true, appointments });
@@ -924,10 +925,9 @@ export async function updateBookingProgress(req: Request, res: Response) {
       data: { bookingProgress: bookingProgress as BookingProgress },
     });
 
-    console.log(
-      `[UPDATE BOOKING PROGRESS] Updated appointment ${appointmentId} to progress: ${bookingProgress}`
-    );
-
+    // console.log(
+    // `[UPDATE BOOKING PROGRESS] Updated appointment ${appointmentId} to progress: ${bookingProgress}`
+    // );
     return res.json({
       success: true,
       message: "Booking progress updated successfully",
@@ -1233,9 +1233,9 @@ export async function updateAppointmentSlotHandler(
             where: { id: appointment.slotId },
             data: { isBooked: false },
           });
-          console.log(
-            `[BACKEND] Unbooked slot ${appointment.slotId} for PENDING appointment ${appointmentId}`
-          );
+          // console.log(
+          // `[BACKEND] Unbooked slot ${appointment.slotId} for PENDING appointment ${appointmentId}`
+          // );
         } catch (dbError: any) {
           console.error(
             "[UPDATE SLOT] Database connection error on slot unbooking:",
@@ -1252,9 +1252,9 @@ export async function updateAppointmentSlotHandler(
           throw dbError;
         }
       } else {
-        console.warn(
-          `[BACKEND] Cannot unbook slot for appointment ${appointmentId} with status ${currentAppointment.status}`
-        );
+        // console.warn(
+        // `[BACKEND] Cannot unbook slot for appointment ${appointmentId} with status ${currentAppointment.status}`
+        // );
         return res.status(400).json({
           success: false,
           message: `Cannot change slot for appointment with status ${currentAppointment.status}. Only PENDING appointments can have their slots changed.`,
@@ -1309,10 +1309,11 @@ export async function updateAppointmentSlotHandler(
     // 2. verifyPaymentHandler (manual payment verification)
     // 3. updateAppointmentStatusHandler (when status is manually set to CONFIRMED)
 
-    console.log(
-      "ℹ️ [BACKEND] Slot assigned to appointment (will be marked as booked after payment confirmation):",
-      slotId
-    );
+    // console.log(
+    // "ℹ️ [BACKEND] Slot assigned to appointment (will be marked as booked after payment confirmation)
+    // :",
+    // slotId
+    // );
 
     return res.json({
       success: true,
@@ -1403,10 +1404,9 @@ export async function deleteAppointmentHandler(req: Request, res: Response) {
       },
     });
 
-    console.log(
-      `[USER] Appointment ${appointmentId} deleted by user ${userId}`
-    );
-
+    // console.log(
+    // `[USER] Appointment ${appointmentId} deleted by user ${userId}`
+    // );
     return res.json({
       success: true,
       message: "Appointment deleted successfully",

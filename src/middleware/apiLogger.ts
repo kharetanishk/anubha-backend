@@ -30,11 +30,11 @@ export function apiLogger(req: Request, res: Response, next: NextFunction) {
   const timestamp = new Date().toISOString();
 
   // Simplified logging - just method, path, and status
-  console.log(
-    `[API] ${req.method} ${req.path} ${
-      req.user ? `[User: ${req.user.id}]` : "[Unauthenticated]"
-    }`
-  );
+  // console.log(
+  //   `[API] ${req.method} ${req.path} ${
+  //     req.user ? `[User: ${req.user.id}]` : "[Unauthenticated]"
+  //   }`
+  // );
 
   // Capture response for status code logging
   const originalSend = res.send;
@@ -44,9 +44,9 @@ export function apiLogger(req: Request, res: Response, next: NextFunction) {
 
     // Only log errors or slow requests (>1000ms) in detail
     if (statusCode >= 400 || duration > 1000) {
-      console.log(
-        `[API] ${req.method} ${req.path} → ${statusCode} (${duration}ms)`
-      );
+      // console.log(
+      //   `[API] ${req.method} ${req.path} → ${statusCode} (${duration}ms)`
+      // );
 
       // Log error details
       if (statusCode >= 400 && body) {
@@ -54,7 +54,7 @@ export function apiLogger(req: Request, res: Response, next: NextFunction) {
           const parsedBody = typeof body === "string" ? JSON.parse(body) : body;
           const errorMessage =
             parsedBody.message || parsedBody.error || "Unknown error";
-          console.log(`[API ERROR] ${errorMessage}`);
+          // console.log(`[API ERROR] ${errorMessage}`);
         } catch (e) {
           // Not JSON, skip
         }

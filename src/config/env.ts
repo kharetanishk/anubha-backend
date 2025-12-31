@@ -43,6 +43,12 @@ interface EnvConfig {
   // Optional/Development only
   WHATSAPP_PHONE_NUMBER_ID?: string;
   META_ACCESS_TOKEN?: string;
+
+  // Frontend URL (required in production for password reset links, etc.)
+  FRONTEND_URL?: string;
+
+  // CORS Origins (comma-separated list of allowed origins for production)
+  CORS_ORIGINS?: string;
 }
 
 interface ValidationResult {
@@ -215,6 +221,24 @@ export function validateEnv(): ValidationResult {
     config.META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
   }
 
+  // Frontend URL - required in production
+  if (process.env.FRONTEND_URL) {
+    config.FRONTEND_URL = process.env.FRONTEND_URL;
+  } else if (process.env.NODE_ENV === "production") {
+    warnings.push(
+      "FRONTEND_URL is not set. Password reset links may not work correctly in production."
+    );
+  }
+
+  // CORS Origins - recommended in production
+  if (process.env.CORS_ORIGINS) {
+    config.CORS_ORIGINS = process.env.CORS_ORIGINS;
+  } else if (process.env.NODE_ENV === "production") {
+    warnings.push(
+      "CORS_ORIGINS is not set. CORS will only allow localhost in production. Set CORS_ORIGINS to your production frontend URL(s)."
+    );
+  }
+
   return {
     isValid: errors.length === 0,
     errors,
@@ -250,26 +274,26 @@ export function getEnvConfig(): EnvConfig {
 
   // Log warnings if any
   if (result.warnings.length > 0) {
-    console.warn("==========================================");
-    console.warn("⚠️  ENVIRONMENT VARIABLE WARNINGS");
-    console.warn("==========================================");
-    result.warnings.forEach((warning, index) => {
-      console.warn(`  ${index + 1}. ${warning}`);
-    });
-    console.warn("==========================================");
+    // console.warn("==========================================");
+    // console.warn("⚠️  ENVIRONMENT VARIABLE WARNINGS");
+    // console.warn("==========================================");
+    // result.warnings.forEach((warning, index) => {
+    //   console.warn(`  ${index + 1}. ${warning}`);
+    // });
+    // console.warn("==========================================");
   }
 
   // Log success
-  console.log("==========================================");
-  console.log("✅ ENVIRONMENT VARIABLES VALIDATED");
-  console.log("==========================================");
-  console.log("Required variables: ✓");
-  if (result.warnings.length > 0) {
-    console.log(`Warnings: ${result.warnings.length} (see above)`);
-  } else {
-    console.log("Warnings: None");
-  }
-  console.log("==========================================");
+  // console.log("==========================================");
+  // console.log("✅ ENVIRONMENT VARIABLES VALIDATED");
+  // console.log("==========================================");
+  // console.log("Required variables: ✓");
+  // if (result.warnings.length > 0) {
+  //   console.log(`Warnings: ${result.warnings.length} (see above)`);
+  // } else {
+  //   console.log("Warnings: None");
+  // }
+  // console.log("==========================================");
 
   return result.config as EnvConfig;
 }
