@@ -154,7 +154,9 @@ async function checkAndSendReminders() {
           `[CRON REMINDER] ❌ Failed to send reminder for appointment ${appointment.id}`
         );
         console.error("  Error:", error.message);
-        console.error("  Stack:", error.stack);
+        if (process.env.NODE_ENV !== "production") {
+          console.error("  Stack:", error.stack);
+        }
         console.error("==========================================");
         // Continue with other appointments even if one fails
       }
@@ -170,7 +172,9 @@ async function checkAndSendReminders() {
     console.error("==========================================");
     console.error("[CRON REMINDER] ❌ Error checking reminders");
     console.error("  Error:", error.message);
-    console.error("  Stack:", error.stack);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("  Stack:", error.stack);
+    }
     console.error("==========================================");
   }
 }
@@ -269,7 +273,9 @@ reminderSentSuccessfully = true;
       console.error("  Appointment ID:", appointmentId);
       console.error("  Patient Phone:", patientPhone);
       console.error("  Error:", error.message);
-      console.error("  Stack:", error.stack);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("  Stack:", error.stack);
+      }
       console.error("==========================================");
       // Don't mark as sent - will retry in next cron run
     }
@@ -325,7 +331,9 @@ reminderSentSuccessfully = true;
     console.error(`[CRON REMINDER] ❌ Error sending admin reminder`);
     console.error("  Appointment ID:", appointmentId);
     console.error("  Error:", error.message);
-    console.error("  Stack:", error.stack);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("  Stack:", error.stack);
+    }
     console.error("==========================================");
   }
 
@@ -371,7 +379,9 @@ reminderSentSuccessfully = true;
       console.error(`[CRON REMINDER] ❌ Failed to mark reminder as sent`);
       console.error("  Appointment ID:", appointmentId);
       console.error("  Error:", error.message);
-      console.error("  Stack:", error.stack);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("  Stack:", error.stack);
+      }
       console.error("==========================================");
     }
   } else {

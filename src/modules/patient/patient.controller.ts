@@ -31,17 +31,17 @@ export class PatientController {
       }
 
       // console.log(" [BACKEND] Calling patientService.createPatient...");
-const patient = await patientService.createPatient(req.user.id, req.body);
+      const patient = await patientService.createPatient(req.user.id, req.body);
       // console.log(" [BACKEND] Patient created successfully:", {
-      // id: patient.id,
-      // name: patient.name,
+      //   id: patient.id,
+      //   name: patient.name,
       // });
-      // return res.status(201).json({
-      // success: true,
-      // message: "Patient form submitted successfully.",
-      // patient,
-      // });
-      // } catch (err: any) {
+      return res.status(201).json({
+        success: true,
+        message: "Patient form submitted successfully.",
+        patient,
+      });
+    } catch (err: any) {
       // console.error(" [BACKEND] CREATE PATIENT ERROR:", err);
       console.error(" [BACKEND] Error details:", {
         name: err.name,

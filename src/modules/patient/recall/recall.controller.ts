@@ -6,11 +6,11 @@ import prisma from "../../../database/prismaclient";
 export async function createRecallHandler(req: Request, res: Response) {
   try {
     // console.log(" [BACKEND] Recall creation request received");
-// console.log(
-// " [BACKEND] User:",
-// req.user ? { id: req.user.id, role: req.user.role } : "NOT AUTHENTICATED"
-// );
-const userId = (req as any).user?.id;
+    // console.log(
+    //   " [BACKEND] User:",
+    //   req.user ? { id: req.user.id, role: req.user.role } : "NOT AUTHENTICATED"
+    // );
+    const userId = (req as any).user?.id;
     if (!userId) {
       console.error(
         " [BACKEND] Recall creation failed: User not authenticated"
@@ -24,21 +24,21 @@ const userId = (req as any).user?.id;
     // hasNotes: !!req.body.notes,
     // appointmentId: req.body.appointmentId || "none",
     // });
-    // // console.log(" [BACKEND] Calling createRecall service...");
-const recall = await createRecall(req.body, userId);
+    // console.log(" [BACKEND] Calling createRecall service...");
+    const recall = await createRecall(req.body, userId);
 
     // console.log(" [BACKEND] Recall created successfully:", {
-    // id: recall.id,
-    // patientId: recall.patientId,
-    // entriesCount: recall.entries.length,
-    // appointmentId: recall.appointmentId,
+    //   id: recall.id,
+    //   patientId: recall.patientId,
+    //   entriesCount: recall.entries.length,
+    //   appointmentId: recall.appointmentId,
     // });
-    // return res.status(201).json({
-    // success: true,
-    // message: "Recall stored successfully",
-    // data: recall,
-    // });
-    // } catch (err: any) {
+    return res.status(201).json({
+      success: true,
+      message: "Recall stored successfully",
+      data: recall,
+    });
+  } catch (err: any) {
     // console.error(" [BACKEND] CREATE RECALL ERROR:", err);
     console.error(" [BACKEND] Error details:", {
       name: err.name,

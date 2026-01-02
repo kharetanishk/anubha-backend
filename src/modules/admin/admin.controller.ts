@@ -177,7 +177,7 @@ export async function adminDeleteAppointment(req: Request, res: Response) {
       // console.log(
       // `[ADMIN] Appointment ${id} archived globally by admin ${adminId}`
       // );
-return res.json({
+      return res.json({
         success: true,
         message: "Appointment archived globally (removed from all views)",
         scope: "global",
@@ -216,7 +216,7 @@ return res.json({
     console.error("Admin Delete Appointment Error:", err);
     return res.status(500).json({
       success: false,
-      error: err.message || "Failed to delete appointment",
+      error: "Something went wrong",
     });
   }
 }
@@ -378,14 +378,14 @@ export async function adminUpdateAppointmentStatus(
     // This handles manual confirmation by admin (not just payment flow)
     if (status === "CONFIRMED" && previousStatus !== "CONFIRMED") {
       // console.log("==========================================");
-// console.log(
-// "[ADMIN] Appointment manually confirmed, sending WhatsApp notifications..."
-// );
-// console.log("  Appointment ID:", id);
-// console.log("  Previous Status:", previousStatus);
-// console.log("  New Status:", status);
-// console.log("==========================================");
-// Fetch appointment with patient and doctor details for notifications
+      // console.log(
+      // "[ADMIN] Appointment manually confirmed, sending WhatsApp notifications..."
+      // );
+      // console.log("  Appointment ID:", id);
+      // console.log("  Previous Status:", previousStatus);
+      // console.log("  New Status:", status);
+      // console.log("==========================================");
+      // Fetch appointment with patient and doctor details for notifications
       const appointmentWithDetails = await prisma.appointment.findUnique({
         where: { id },
         include: {
@@ -442,7 +442,7 @@ export async function adminGetAppointmentDetails(req: Request, res: Response) {
     if (!id) return res.status(400).json({ error: "Missing id param" });
 
     // console.log("[ADMIN] Fetching appointment details for ID:", id);
-const appt = await prisma.appointment.findUnique({
+    const appt = await prisma.appointment.findUnique({
       where: { id },
       include: {
         patient: {
@@ -469,7 +469,7 @@ const appt = await prisma.appointment.findUnique({
 
     if (!appt) {
       // console.log("[ADMIN] Appointment not found:", id);
-return res.status(404).json({ error: "Appointment not found" });
+      return res.status(404).json({ error: "Appointment not found" });
     }
 
     // Authorization check: Verify admin owns/manages this appointment
@@ -482,25 +482,35 @@ return res.status(404).json({ error: "Appointment not found" });
       // .toISOString(),
       // });
       // return res.status(403).json({
-      // error:
-      // "Forbidden. You don't have permission to access this appointment.",
+      //   error: "Forbidden. You don't have permission to access this appointment.",
       // });
-      // }
+      return res.status(403).json({
+        success: false,
+        error:
+          "Forbidden. You don't have permission to access this appointment.",
+      });
+    }
 
     // console.log("[ADMIN] Appointment found successfully");
-return res.json({ success: true, appointment: appt });
+    return res.json({ success: true, appointment: appt });
   } catch (err: any) {
-    console.error("[ADMIN] Get Appointment Details Error:", err);
-    console.error("[ADMIN] Error details:", {
-      message: err?.message,
-      code: err?.code,
-      meta: err?.meta,
-      stack: err?.stack,
-    });
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[ADMIN] Get Appointment Details Error:", err);
+      console.error("[ADMIN] Error details:", {
+        message: err?.message,
+        code: err?.code,
+        meta: err?.meta,
+        stack: err?.stack,
+      });
+    } else {
+      console.error("[ADMIN] Get Appointment Details Error:", {
+        message: err?.message,
+        code: err?.code,
+      });
+    }
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch appointment details",
-      error: process.env.NODE_ENV === "development" ? err?.message : undefined,
+      message: "Something went wrong",
     });
   }
 }
@@ -539,11 +549,15 @@ export async function createDoctorSession(req: Request, res: Response) {
         // .toISOString(),
         // });
         // return res.status(403).json({
-        // error:
-        // "Forbidden. You don't have permission to create a session for this appointment.",
+        //   error: "Forbidden. You don't have permission to create a session for this appointment.",
         // });
-        // }
-        // }
+        return res.status(403).json({
+          success: false,
+          error:
+            "Forbidden. You don't have permission to create a session for this appointment.",
+        });
+      }
+    }
 
     // Check if session already exists for this appointment
     let session;
@@ -706,11 +720,15 @@ export async function saveDoctorSession(req: Request, res: Response) {
         // .toISOString(),
         // });
         // return res.status(403).json({
-        // error:
-        // "Forbidden. You don't have permission to save a session for this appointment.",
+        //   error: "Forbidden. You don't have permission to save a session for this appointment.",
         // });
-        // }
-        // }
+        return res.status(403).json({
+          success: false,
+          error:
+            "Forbidden. You don't have permission to save a session for this appointment.",
+        });
+      }
+    }
 
     // Find or create session
     let session;
@@ -757,7 +775,7 @@ export async function saveDoctorSession(req: Request, res: Response) {
     console.error("Save Doctor Session Error:", err);
     return res.status(500).json({
       success: false,
-      error: err.message || "Failed to save doctor notes",
+      error: "Something went wrong",
     });
   }
 }
@@ -776,11 +794,11 @@ export async function saveDoctorNotes(req: Request, res: Response) {
   // isPatch ? "Partial update" : "Full submission"
   // }`
   // );
-try {
+  try {
     const adminId = (req as any).user?.id;
     if (!adminId) {
       // console.log("[BACKEND] Unauthorized - no admin ID");
-return res.status(401).json({
+      return res.status(401).json({
         success: false,
         error: "Unauthorized",
       });
@@ -795,10 +813,10 @@ return res.status(401).json({
     if (isPatch) {
       appointmentId = req.params.appointmentId;
       // console.log(
-      // "[BACKEND] PATCH request - Appointment ID from params:",
-      // appointmentId
+      //   "[BACKEND] PATCH request - Appointment ID from params:",
+      //   appointmentId
       // );
-}
+    }
 
     // Check if request is multipart/form-data (has files)
     const files = (req.files as Express.Multer.File[]) || [];
@@ -815,9 +833,9 @@ return res.status(401).json({
         (req as any).body.isDraft === true;
 
       // console.log(
-      // `[BACKEND] Parsing form data - Is Draft: ${isDraft}, Has Files: ${hasFiles}, File Count: ${files.length}`
+      //   `[BACKEND] Parsing form data - Is Draft: ${isDraft}, Has Files: ${hasFiles}, File Count: ${files.length}`
       // );
-try {
+      try {
         parsedFormData =
           typeof formDataStr === "string"
             ? JSON.parse(formDataStr)
@@ -857,7 +875,7 @@ try {
           // mimetype: file.mimetype,
           // size: file.size,
           // });
-          // try {
+          try {
             // Upload file to Cloudinary
             const base64 = `data:${file.mimetype};base64,${file.buffer.toString(
               "base64"
@@ -886,7 +904,7 @@ try {
             // url: cloudinaryResult.secure_url,
             // resourceType: cloudinaryResult.resource_type,
             // });
-// Use Cloudinary's secure_url directly - it includes proper Content-Type headers
+            // Use Cloudinary's secure_url directly - it includes proper Content-Type headers
             // No need for signed URLs when using resource_type: "auto"
             const fileUrl = cloudinaryResult.secure_url;
 
@@ -981,15 +999,14 @@ try {
       // adminId,
       // appointmentId: validatedAppointmentId,
       // appointmentDoctorId: appointment.doctorId,
-      // timestamp: new Date()
-      // .toISOString(),
+      //   timestamp: new Date().toISOString(),
       // });
-      // return res.status(403).json({
-      // success: false,
-      // error:
-      // "Forbidden. You don't have permission to modify notes for this appointment.",
-      // });
-      // }
+      return res.status(403).json({
+        success: false,
+        error:
+          "Forbidden. You don't have permission to modify notes for this appointment.",
+      });
+    }
 
     // Check if notes already exist for PATCH
     const existingNotes = await prisma.doctorNotes.findUnique({
@@ -1071,7 +1088,7 @@ try {
           // console.log(
           // `[BACKEND] Updated existing attachment: ${uploadedFile.fileName}`
           // );
-} else {
+        } else {
           // Create new attachment
           await prisma.doctorNoteAttachment.create({
             data: {
@@ -1087,9 +1104,9 @@ try {
             },
           });
           // console.log(
-          // `[BACKEND] Created new attachment: ${uploadedFile.fileName}`
+          //   `[BACKEND] Created new attachment: ${uploadedFile.fileName}`
           // );
-}
+        }
       }
 
       // console.log(
@@ -1112,7 +1129,7 @@ try {
       // console.warn(
       // "[SAVE DOCTOR NOTES] Warning: bodyMeasurements not found in saved formData"
       // );
-}
+    }
 
     const duration = Date.now() - startTime;
     // console.log(
@@ -1120,7 +1137,7 @@ try {
     // isPatch ? "PATCH" : "POST"
     // } completed in ${duration}ms - Notes ID: ${doctorNotes.id}`
     // );
-return res.json({
+    return res.json({
       success: true,
       message: isDraft
         ? "Doctor notes saved as draft"
@@ -1206,12 +1223,12 @@ function isObject(item: any): boolean {
 async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
   try {
     // console.log("==========================================");
-// console.log("[ADMIN WHATSAPP] Sending confirmation notifications...");
-// console.log("  Appointment ID:", appointment.id);
-// console.log("  Appointment Status: CONFIRMED (by admin)
-// ");
+    // console.log("[ADMIN WHATSAPP] Sending confirmation notifications...");
+    // console.log("  Appointment ID:", appointment.id);
+    // console.log("  Appointment Status: CONFIRMED (by admin)
+    // ");
     // console.log("==========================================");
-// Get patient phone number
+    // Get patient phone number
     const patientPhone = appointment.patient?.phone;
     const patientName = appointment.patient?.name || "Patient";
 
@@ -1219,21 +1236,21 @@ async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
       // console.warn(
       // "[ADMIN WHATSAPP] ⚠️ Patient phone not found, skipping patient notification"
       // );
-} else {
+    } else {
       // console.log("[ADMIN WHATSAPP] Sending patient confirmation message...");
-// console.log("  Patient Name:", patientName);
-// console.log("  Patient Phone:", patientPhone);
-const patientResult = await sendPatientConfirmationMessage(patientPhone);
+      // console.log("  Patient Name:", patientName);
+      // console.log("  Patient Phone:", patientPhone);
+      const patientResult = await sendPatientConfirmationMessage(patientPhone);
 
       if (patientResult.success) {
         // console.log("==========================================");
-// console.log(
-// "[ADMIN WHATSAPP] ✅ Patient notification sent successfully"
-// );
-// console.log("  Patient Phone:", patientPhone);
-// console.log("  Patient Name:", patientName);
-// console.log("==========================================");
-} else {
+        // console.log(
+        // "[ADMIN WHATSAPP] ✅ Patient notification sent successfully"
+        // );
+        // console.log("  Patient Phone:", patientPhone);
+        // console.log("  Patient Name:", patientName);
+        // console.log("==========================================");
+      } else {
         console.error("==========================================");
         console.error("[ADMIN WHATSAPP] ❌ Patient notification failed");
         console.error("  Patient Phone:", patientPhone);
@@ -1259,7 +1276,7 @@ const patientResult = await sendPatientConfirmationMessage(patientPhone);
       // console.log(
       // "[ADMIN WHATSAPP] Doctor phone not found in appointment, trying admin fallback..."
       // );
-try {
+      try {
         const admin = await getSingleAdmin();
         const adminPhone = admin.phone;
         const adminName = admin.name || "Admin";
@@ -1277,13 +1294,13 @@ try {
           );
           if (doctorResult.success) {
             // console.log("==========================================");
-// console.log(
-// "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
-// );
-// console.log("  Admin Phone:", adminPhone);
-// console.log("  Template: doctor_confirmation");
-// console.log("==========================================");
-} else {
+            // console.log(
+            // "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
+            // );
+            // console.log("  Admin Phone:", adminPhone);
+            // console.log("  Template: doctor_confirmation");
+            // console.log("==========================================");
+          } else {
             console.error("==========================================");
             console.error("[ADMIN WHATSAPP] ❌ Doctor notification failed");
             console.error("  Admin Phone:", adminPhone);
@@ -1294,7 +1311,7 @@ try {
           // console.warn(
           // "[ADMIN WHATSAPP] ⚠️ Admin phone not found, skipping doctor notification"
           // );
-}
+        }
       } catch (adminError: any) {
         console.error(
           "[ADMIN WHATSAPP] ❌ Failed to get admin phone:",
@@ -1303,7 +1320,7 @@ try {
       }
     } else {
       // console.log("[ADMIN WHATSAPP] Sending doctor notification...");
-const doctorResult = await sendDoctorNotificationMessage(
+      const doctorResult = await sendDoctorNotificationMessage(
         planName,
         patientName,
         appointmentDate,
@@ -1311,13 +1328,13 @@ const doctorResult = await sendDoctorNotificationMessage(
       );
       if (doctorResult.success) {
         // console.log("==========================================");
-// console.log(
-// "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
-// );
-// console.log("  Doctor Phone:", doctorPhone);
-// console.log("  Template: doctor_confirmation");
-// console.log("==========================================");
-} else {
+        // console.log(
+        // "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
+        // );
+        // console.log("  Doctor Phone:", doctorPhone);
+        // console.log("  Template: doctor_confirmation");
+        // console.log("==========================================");
+      } else {
         console.error("==========================================");
         console.error("[ADMIN WHATSAPP] ❌ Doctor notification failed");
         console.error("  Doctor Phone:", doctorPhone);
@@ -1327,7 +1344,7 @@ const doctorResult = await sendDoctorNotificationMessage(
     }
 
     // console.log("[ADMIN WHATSAPP] ✅ Notification process completed");
-} catch (error: any) {
+  } catch (error: any) {
     console.error("==========================================");
     console.error("[ADMIN WHATSAPP] ❌ Error sending notifications");
     console.error("  Error:", error.message);
@@ -1344,7 +1361,7 @@ const doctorResult = await sendDoctorNotificationMessage(
 export async function getDoctorNotes(req: Request, res: Response) {
   const startTime = Date.now();
   // console.log("[BACKEND] GET /admin/doctor-notes/:appointmentId");
-try {
+  try {
     const adminId = (req as any).user?.id;
     if (!adminId) {
       return res.status(401).json({
@@ -1355,7 +1372,7 @@ try {
 
     const { appointmentId } = req.params;
     // console.log("[BACKEND] Fetching notes for appointment:", appointmentId);
-if (!appointmentId) {
+    if (!appointmentId) {
       console.error("[BACKEND] Missing appointment ID");
       return res.status(400).json({
         success: false,
@@ -1389,11 +1406,16 @@ if (!appointmentId) {
       // .toISOString(),
       // });
       // return res.status(403).json({
-      // success: false,
-      // error:
-      // "Forbidden. You don't have permission to access notes for this appointment.",
+      //   success: false,
+      //   error:
+      //     "Forbidden. You don't have permission to access notes for this appointment.",
       // });
-      // }
+      return res.status(403).json({
+        success: false,
+        error:
+          "Forbidden. You don't have permission to access notes for this appointment.",
+      });
+    }
 
     const doctorNotes = await prisma.doctorNotes.findUnique({
       where: {
@@ -1437,7 +1459,7 @@ if (!appointmentId) {
     // console.log(
     // `[BACKEND] GET completed in ${duration}ms - Notes ID: ${doctorNotes.id}, Attachments: ${doctorNotes.attachments.length}`
     // );
-return res.json({
+    return res.json({
       success: true,
       doctorNotes: {
         id: doctorNotes.id,
@@ -1502,7 +1524,7 @@ return res.json({
     );
     return res.status(500).json({
       success: false,
-      error: err.message || "Failed to get doctor notes",
+      error: "Something went wrong",
     });
   }
 }
@@ -1532,9 +1554,9 @@ export async function deleteDoctorNoteAttachment(req: Request, res: Response) {
 
   try {
     // console.log(
-    // `[BACKEND] Delete Doctor Note Attachment - Attachment ID: ${attachmentId}`
+    //   `[BACKEND] Delete Doctor Note Attachment - Attachment ID: ${attachmentId}`
     // );
-// Find the attachment
+    // Find the attachment
     const attachment = await prisma.doctorNoteAttachment.findUnique({
       where: { id: attachmentId },
       include: {
@@ -1562,18 +1584,18 @@ export async function deleteDoctorNoteAttachment(req: Request, res: Response) {
     if (attachment.filePath && attachment.provider === "CLOUDINARY") {
       try {
         // console.log(
-        // `[BACKEND] Deleting file from Cloudinary: ${attachment.filePath}`
+        //   `[BACKEND] Deleting file from Cloudinary: ${attachment.filePath}`
         // );
-const deleteResult = await deleteFromCloudinary(attachment.filePath);
+        const deleteResult = await deleteFromCloudinary(attachment.filePath);
         if (deleteResult?.result === "ok") {
           // console.log(
-          // `[BACKEND] Successfully deleted file from Cloudinary: ${attachment.filePath}`
+          //   `[BACKEND] Successfully deleted file from Cloudinary: ${attachment.filePath}`
           // );
-} else {
+        } else {
           // console.warn(
           // `[BACKEND] Cloudinary delete returned: ${deleteResult?.result}`
           // );
-}
+        }
       } catch (cloudinaryError: any) {
         console.error(
           `[BACKEND] Failed to delete from Cloudinary:`,
@@ -1594,9 +1616,9 @@ const deleteResult = await deleteFromCloudinary(attachment.filePath);
 
     const duration = Date.now() - startTime;
     // console.log(
-    // `[BACKEND] Delete Doctor Note Attachment completed in ${duration}ms`
+    //   `[BACKEND] Delete Doctor Note Attachment completed in ${duration}ms`
     // );
-return res.json({
+    return res.json({
       success: true,
       message: "Attachment deleted successfully",
     });
@@ -1608,7 +1630,7 @@ return res.json({
     );
     return res.status(500).json({
       success: false,
-      error: err.message || "Failed to delete attachment",
+      error: "Something went wrong",
     });
   }
 }

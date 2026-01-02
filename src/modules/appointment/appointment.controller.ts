@@ -1415,7 +1415,7 @@ export async function deleteAppointmentHandler(req: Request, res: Response) {
     console.error("User Delete Appointment Error:", err);
     return res.status(500).json({
       success: false,
-      error: err.message || "Failed to delete appointment",
+      error: "Something went wrong",
     });
   }
 }

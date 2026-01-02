@@ -59,7 +59,7 @@ export class AuthService {
     // normalized: normalizedPhone,
     // alternative: alternativePhone,
     // });
-// Build search conditions - try both normalized and alternative formats
+    // Build search conditions - try both normalized and alternative formats
     const phoneConditions: any[] = [{ phone: normalizedPhone }];
     if (alternativePhone && alternativePhone !== normalizedPhone) {
       phoneConditions.push({ phone: alternativePhone });
@@ -87,8 +87,8 @@ export class AuthService {
     // ? { id: admin.id, name: admin.name, phone: admin.phone }
     // : null,
     // });
-    // if (user) return { ...user, role: "USER" as const };
-    // if (admin) return { ...admin, role: "ADMIN" as const };
+    if (user) return { ...user, role: "USER" as const };
+    if (admin) return { ...admin, role: "ADMIN" as const };
 
     return null;
   }
@@ -179,29 +179,37 @@ export class AuthService {
         // Log the error for debugging but allow the flow to continue
       } else {
         // console.log("[AUTH] OTP sent successfully via WhatsApp");
-}
+      }
     } catch (error: any) {
       console.error("[AUTH] Error sending OTP via WhatsApp:", error);
       // Don't throw error - OTP is still created and can be verified
     }
 
     // console.log("OTP:", otp);
-return otp;
+    return otp;
   }
 
   /* ---------------- DUAL CHANNEL OTP (NEW) ---------------- */
   private async createDualChannelOtp(phone: string, email: string) {
     // blocked by global rate limit? maybe not per user
     // Check if OTP was sent recently (last 60s) to either phone or email
-    const recentOtp = await prisma.oTP.findFirst({
-      where: {
-        OR: [{ phone }, { email }],
-        createdAt: {
-          gte: new Date(Date.now() - 60 * 1000),
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    // Build query conditions - only include non-null values
+    const rateLimitConditions: any[] = [];
+    if (phone) rateLimitConditions.push({ phone });
+    if (email) rateLimitConditions.push({ email });
+
+    const recentOtp =
+      rateLimitConditions.length > 0
+        ? await prisma.oTP.findFirst({
+            where: {
+              OR: rateLimitConditions,
+              createdAt: {
+                gte: new Date(Date.now() - 60 * 1000),
+              },
+            },
+            orderBy: { createdAt: "desc" },
+          })
+        : null;
 
     if (recentOtp) {
       const secondsSinceLastOtp = Math.floor(
@@ -223,22 +231,43 @@ return otp;
     try {
       await prisma.$transaction(
         async (tx) => {
-          // Delete existing
-          await tx.oTP.deleteMany({
-            where: {
-              OR: [{ phone }, { email }],
-            },
-          });
+          // Build delete conditions - only include non-null values
+          const deleteConditions: any[] = [];
+          if (phone) deleteConditions.push({ phone });
+          if (email) deleteConditions.push({ email });
 
-          // Create for Phone
-          await tx.oTP.create({
-            data: { phone, code: hashed, expiresAt },
-          });
+          // Delete existing OTPs if we have conditions
+          if (deleteConditions.length > 0) {
+            await tx.oTP.deleteMany({
+              where: {
+                OR: deleteConditions,
+              },
+            });
+          }
 
-          // Create for Email
-          await tx.oTP.create({
-            data: { email, code: hashed, expiresAt },
-          });
+          // Create OTP records only for provided channels
+          const createPromises: Promise<any>[] = [];
+
+          // Create for Phone if provided
+          if (phone) {
+            createPromises.push(
+              tx.oTP.create({
+                data: { phone, code: hashed, expiresAt },
+              })
+            );
+          }
+
+          // Create for Email if provided
+          if (email) {
+            createPromises.push(
+              tx.oTP.create({
+                data: { email, code: hashed, expiresAt },
+              })
+            );
+          }
+
+          // Execute all creates in parallel
+          await Promise.all(createPromises);
         },
         {
           timeout: 30000, // 30 seconds timeout
@@ -290,9 +319,9 @@ return otp;
     }
 
     // console.log(
-    // `[AUTH] Dual OTP Sent. Phone: ${phoneSent}, Email: ${emailSent}. Code: ${otp}`
+    //   `[AUTH] Dual OTP Sent. Phone: ${phoneSent}, Email: ${emailSent}. Code: ${otp}`
     // );
-return { otp, phoneSent, emailSent };
+    return { otp, phoneSent, emailSent };
   }
 
   /* ---------------- UNIFIED SIGNUP (NEW) ---------------- */
@@ -618,7 +647,7 @@ return { otp, phoneSent, emailSent };
   /* ---------------- LOGIN OTP ---------------- */
   async sendLoginOtp(phone: string) {
     // console.log("[AUTH] sendLoginOtp called with phone:", phone);
-// Normalize phone number first to ensure consistency
+    // Normalize phone number first to ensure consistency
     let normalizedPhone: string;
     try {
       normalizedPhone = this.normalizePhone(phone);
@@ -663,7 +692,7 @@ return { otp, phoneSent, emailSent };
     // }
     // : null
     // );
-// Allow OTP sending even if user doesn't exist
+    // Allow OTP sending even if user doesn't exist
     // We'll check user existence during OTP verification instead
     // This prevents user enumeration and allows linking phone flow
     // Use normalized phone number for OTP creation
@@ -717,7 +746,7 @@ return { otp, phoneSent, emailSent };
   /* ---------------- GET ME ---------------- */
   async getMe(ownerId: string, role: "USER" | "ADMIN") {
     // console.log("[AUTH SERVICE] getMe called with:", { ownerId, role });
-if (role === "USER") {
+    if (role === "USER") {
       const user = await prisma.user.findUnique({
         where: { id: ownerId },
         select: { id: true, name: true, phone: true, email: true },
@@ -729,11 +758,11 @@ if (role === "USER") {
       }
 
       // console.log("[AUTH SERVICE] User found:", {
-      // id: user.id,
-      // name: user.name,
+      //   id: user.id,
+      //   name: user.name,
       // });
-      // return { ...user, role: "USER" };
-      // }
+      return { ...user, role: "USER" };
+    }
 
     if (role === "ADMIN") {
       const admin = await prisma.admin.findUnique({
@@ -747,11 +776,11 @@ if (role === "USER") {
       }
 
       // console.log("[AUTH SERVICE] Admin found:", {
-      // id: admin.id,
-      // name: admin.name,
+      //   id: admin.id,
+      //   name: admin.name,
       // });
-      // return { ...admin, role: "ADMIN" };
-      // }
+      return { ...admin, role: "ADMIN" };
+    }
 
     console.error("[AUTH SERVICE] Invalid role:", role);
     throw new AppError(`Invalid role: ${role}. Expected USER or ADMIN.`, 400);
@@ -767,7 +796,7 @@ if (role === "USER") {
    */
   async forgotPassword(email: string): Promise<{ message: string }> {
     // console.log("[AUTH] forgotPassword called with email:", email);
-// Normalize email (trim and lowercase)
+    // Normalize email (trim and lowercase)
     const normalizedEmail = email.trim().toLowerCase();
 
     // Check if user exists with this email
@@ -813,9 +842,13 @@ if (role === "USER") {
       // Generate reset password link with raw token
       // Production: Use FRONTEND_URL environment variable
       // Development: Fallback to localhost
-      const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000");
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000");
       if (!frontendUrl) {
-        throw new Error("FRONTEND_URL environment variable is required in production");
+        throw new Error(
+          "FRONTEND_URL environment variable is required in production"
+        );
       }
       const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
 
@@ -825,8 +858,8 @@ if (role === "USER") {
         // "[AUTH] Attempting to send password reset email to:",
         // normalizedEmail
         // );
-// console.log("[AUTH] Reset link:", resetLink);
-const emailSent = await sendPasswordResetEmail(
+        // console.log("[AUTH] Reset link:", resetLink);
+        const emailSent = await sendPasswordResetEmail(
           normalizedEmail,
           resetLink
         );
@@ -836,7 +869,7 @@ const emailSent = await sendPasswordResetEmail(
           // "[AUTH] ✅ Password reset email sent successfully to:",
           // normalizedEmail
           // );
-} else {
+        } else {
           console.error(
             "[AUTH] ❌ Failed to send password reset email to:",
             normalizedEmail,
@@ -850,8 +883,12 @@ const emailSent = await sendPasswordResetEmail(
           "[AUTH] ❌ Exception occurred while sending password reset email:"
         );
         console.error("[AUTH] Error message:", error.message);
-        console.error("[AUTH] Error stack:", error.stack);
-        console.error("[AUTH] Recipient email:", normalizedEmail);
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[AUTH] Error stack:", error.stack);
+        }
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[AUTH] Recipient email:", normalizedEmail);
+        }
         // Continue execution - don't break the response
       }
 
@@ -860,9 +897,9 @@ const emailSent = await sendPasswordResetEmail(
         // console.log("[AUTH] Password reset link generated (DEV ONLY)
         // :");
         // console.log("  - User ID:", user.id);
-// console.log("  - Reset Link:", resetLink);
-// console.log("  - Expires at:", resetPasswordExpiry.toISOString()
-// );
+        // console.log("  - Reset Link:", resetLink);
+        // console.log("  - Expires at:", resetPasswordExpiry.toISOString()
+        // );
       }
     } else {
       // console.log(
@@ -892,7 +929,7 @@ const emailSent = await sendPasswordResetEmail(
     newPassword: string
   ): Promise<{ message: string }> {
     // console.log("[AUTH] resetPassword called");
-// Validate inputs
+    // Validate inputs
     if (!rawToken || !rawToken.trim()) {
       throw new AppError("Reset token is required", 400);
     }
@@ -922,19 +959,19 @@ const emailSent = await sendPasswordResetEmail(
     // If user not found or token doesn't match, return generic error
     if (!user) {
       // console.log("[AUTH] Invalid reset token provided");
-throw new AppError("Invalid or expired reset token", 400);
+      throw new AppError("Invalid or expired reset token", 400);
     }
 
     // Check if token has expired
     if (!user.resetPasswordExpiry) {
       // console.log("[AUTH] Reset token has no expiry date");
-throw new AppError("Invalid or expired reset token", 400);
+      throw new AppError("Invalid or expired reset token", 400);
     }
 
     const now = new Date();
     if (now > user.resetPasswordExpiry) {
       // console.log("[AUTH] Reset token has expired");
-// Clear expired token
+      // Clear expired token
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -980,7 +1017,7 @@ throw new AppError("Invalid or expired reset token", 400);
     // email,
     // phone,
     // });
-// Normalize email
+    // Normalize email
     const normalizedEmail = email.trim().toLowerCase();
 
     // Check if user exists with this email
@@ -1037,7 +1074,7 @@ throw new AppError("Invalid or expired reset token", 400);
         // Don't throw error - OTP is still created and can be verified
       } else {
         // console.log("[AUTH] Email OTP sent successfully");
-}
+      }
     } catch (error: any) {
       console.error("[AUTH] Error sending email OTP:", error);
       // Don't throw error - OTP is still created
@@ -1059,7 +1096,7 @@ throw new AppError("Invalid or expired reset token", 400);
     // email,
     // phone,
     // });
-// Normalize inputs
+    // Normalize inputs
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPhone = this.normalizePhone(phone);
 
@@ -1180,7 +1217,7 @@ throw new AppError("Invalid or expired reset token", 400);
     // "to link phone:",
     // phoneToLink
     // );
-return otp;
+    return otp;
   }
 
   /* ---------------- ADD EMAIL TO PHONE-ONLY ACCOUNT ---------------- */
@@ -1194,7 +1231,7 @@ return otp;
     // userId,
     // email,
     // });
-// Normalize email
+    // Normalize email
     const normalizedEmail = email.trim().toLowerCase();
 
     // Validate email format
@@ -1264,7 +1301,7 @@ return otp;
         // console.log(
         // "[AUTH] Email verification OTP sent successfully for adding email"
         // );
-}
+      }
     } catch (error: any) {
       console.error("[AUTH] Error sending email verification OTP:", error);
       // Don't throw error - OTP is still created
@@ -1286,7 +1323,7 @@ return otp;
     // userId,
     // email,
     // });
-// Normalize email
+    // Normalize email
     const normalizedEmail = email.trim().toLowerCase();
 
     // Get current user
@@ -1366,7 +1403,7 @@ return otp;
     const token = generateToken(updatedUser.id, userRole);
 
     // console.log("[AUTH] Email successfully added to user account");
-return {
+    return {
       message: "Email verified and added successfully",
       token,
       user: { ...updatedUser, role: userRole },
@@ -1415,7 +1452,7 @@ return {
     // "email:",
     // email
     // );
-return otp;
+    return otp;
   }
 
   /* ---------------- UPDATE PHONE NUMBER ---------------- */
@@ -1445,14 +1482,14 @@ return otp;
     // If phone is null or empty, delete it
     if (!phone || phone.trim() === "") {
       // console.log("[AUTH SERVICE] Deleting phone number for user:", userId);
-const updatedUser = await prisma.user.update({
+      const updatedUser = await prisma.user.update({
         where: { id: userId },
         data: { phone: null } as any, // Phone is nullable in schema
         select: { id: true, name: true, phone: true, email: true },
       });
 
       // console.log("[AUTH SERVICE] Phone number deleted successfully");
-return { ...updatedUser, role: "USER" as const };
+      return { ...updatedUser, role: "USER" as const };
     }
 
     // Normalize phone number
@@ -1507,18 +1544,18 @@ return { ...updatedUser, role: "USER" as const };
 
     // Update phone number with error handling for unique constraint violations
     // console.log("[AUTH SERVICE] Updating phone number:", {
-    // oldPhone: user.phone,
-    // newPhone: normalizedPhone,
+    //   oldPhone: user.phone,
+    //   newPhone: normalizedPhone,
     // });
-    // try {
-    // const updatedUser = await prisma.user.update({
-    // where: { id: userId },
-    // data: { phone: normalizedPhone },
-    // select: { id: true, name: true, phone: true, email: true },
-    // });
+    try {
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: { phone: normalizedPhone },
+        select: { id: true, name: true, phone: true, email: true },
+      });
 
       // console.log("[AUTH SERVICE] Phone number updated successfully");
-return { ...updatedUser, role: "USER" as const };
+      return { ...updatedUser, role: "USER" as const };
     } catch (error: any) {
       // Handle Prisma unique constraint violation (P2002)
       if (error.code === "P2002" && error.meta?.target?.includes("phone")) {
@@ -1549,7 +1586,7 @@ return { ...updatedUser, role: "USER" as const };
     // phone,
     // email,
     // });
-// Check if user already exists by email
+    // Check if user already exists by email
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -1602,7 +1639,7 @@ return { ...updatedUser, role: "USER" as const };
   /* ---------------- PASSWORD-BASED LOGIN ---------------- */
   async loginWithPassword(identifier: string, password: string) {
     // console.log("[AUTH] loginWithPassword called with identifier:", identifier);
-// Check if identifier is email or phone
+    // Check if identifier is email or phone
     const isEmail = identifier.includes("@");
 
     // First, check if this is an admin email/phone
@@ -1622,7 +1659,7 @@ return { ...updatedUser, role: "USER" as const };
     // If admin found, authenticate as admin
     if (admin) {
       // console.log("[AUTH] Admin login attempt detected");
-const adminWithAuth = admin as any;
+      const adminWithAuth = admin as any;
 
       if (!adminWithAuth.password) {
         throw new AppError(
@@ -1639,11 +1676,11 @@ const adminWithAuth = admin as any;
 
       if (!isPasswordValid) {
         // console.log("[AUTH] Admin password verification failed");
-throw new AppError("Invalid credentials", 401);
+        throw new AppError("Invalid credentials", 401);
       }
 
       // console.log("[AUTH] Admin login successful");
-const token = generateToken(admin.id, "ADMIN");
+      const token = generateToken(admin.id, "ADMIN");
 
       // Return admin without password
       const { password: _, ...safeAdmin } = adminWithAuth;
@@ -1693,7 +1730,7 @@ const token = generateToken(admin.id, "ADMIN");
 
     if (!isPasswordValid) {
       // console.log("[AUTH] User password verification failed");
-throw new AppError("Invalid credentials", 401);
+      throw new AppError("Invalid credentials", 401);
     }
 
     // Use the actual role from the database (USER or ADMIN)
@@ -1720,7 +1757,7 @@ throw new AppError("Invalid credentials", 401);
    */
   async googleAuth(email: string, name: string, googleId?: string) {
     // console.log("[AUTH] googleAuth called with:", { email, name });
-// CRITICAL: Normalize email (trim, lowercase) to ensure consistent matching
+    // CRITICAL: Normalize email (trim, lowercase) to ensure consistent matching
     const normalizedEmail = email.trim().toLowerCase();
 
     // STEP 1: Find user by email (email is globally unique)
@@ -1733,7 +1770,7 @@ throw new AppError("Invalid credentials", 401);
       // console.log(
       // `[AUTH] User exists with email ${normalizedEmail}, linking Google login`
       // );
-// CRITICAL: Preserve existing role from database (never override)
+      // CRITICAL: Preserve existing role from database (never override)
       // At this point, user is guaranteed to be non-null (we're inside if (user) block)
       if (!user) throw new Error("User should not be null here"); // Type guard
       const userRole = (user.role as "USER" | "ADMIN") || "USER";
@@ -1751,7 +1788,7 @@ throw new AppError("Invalid credentials", 401);
     // console.log(
     // `[AUTH] No user found with email ${normalizedEmail}, creating new user`
     // );
-// Create new user for Google OAuth
+    // Create new user for Google OAuth
     // email is required for Google OAuth, so it's guaranteed to be a string (not null)
     user = await prisma.user.create({
       data: {

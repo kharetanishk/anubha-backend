@@ -141,9 +141,9 @@ export class AuthController {
       // userId: req.user?.id,
       // userRole: req.user?.role,
       // });
-      // if (!req.user) {
-      // // console.log("[AUTH /me] No user found - returning 401");
-return res.status(401).json({
+      if (!req.user) {
+        // console.log("[AUTH /me] No user found - returning 401");
+        return res.status(401).json({
           success: false,
           message: "Not authenticated",
         });
@@ -159,24 +159,33 @@ return res.status(401).json({
       }
 
       // console.log("[AUTH /me] Calling authService.getMe with:", {
-      // id: req.user.id,
-      // role: req.user.role,
+      //   id: req.user.id,
+      //   role: req.user.role,
       // });
-      // const response = await authService.getMe(req.user.id, req.user.role);
+      const response = await authService.getMe(req.user.id, req.user.role);
 
       // console.log("[AUTH /me] Success - returning user data");
-return res.status(200).json({
+      return res.status(200).json({
         success: true,
         user: response,
       });
     } catch (error: any) {
-      console.error("[AUTH /me] Error:", {
-        message: error.message,
-        statusCode: error.statusCode,
-        errorCode: error.code,
-        errorName: error.name,
-        stack: error.stack,
-      });
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[AUTH /me] Error:", {
+          message: error.message,
+          statusCode: error.statusCode,
+          errorCode: error.code,
+          errorName: error.name,
+          stack: error.stack,
+        });
+      } else {
+        console.error("[AUTH /me] Error:", {
+          message: error.message,
+          statusCode: error.statusCode,
+          errorCode: error.code,
+          errorName: error.name,
+        });
+      }
 
       // Check if it's a database connection error
       // Prisma error codes: https://www.prisma.io/docs/reference/api-reference/error-reference
@@ -211,6 +220,7 @@ return res.status(200).json({
         }
       }
 
+      // Never expose stack traces or internal error details to client
       return res.status(statusCode).json({
         success: false,
         message: error.message || "Failed to get user information",
@@ -230,9 +240,9 @@ return res.status(200).json({
       // userId: req.user?.id,
       // userRole: req.user?.role,
       // });
-      // if (!req.user) {
-      // // console.log("[AUTH /update-phone] No user found - returning 401");
-return res.status(401).json({
+      if (!req.user) {
+        // console.log("[AUTH /update-phone] No user found - returning 401");
+        return res.status(401).json({
           success: false,
           message: "Not authenticated. Please login.",
         });
@@ -261,7 +271,7 @@ return res.status(401).json({
       const updatedUser = await authService.updatePhone(req.user.id, phone);
 
       // console.log("[AUTH /update-phone] Success - phone updated");
-return res.status(200).json({
+      return res.status(200).json({
         success: true,
         message: phone
           ? "Phone number updated successfully."
@@ -304,13 +314,7 @@ return res.status(200).json({
         password
       );
 
-      res.cookie("auth_token", response.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (increased from 7 days)
-        path: "/",
-      });
+      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
 
       return res.status(201).json({
         success: true,
@@ -344,13 +348,7 @@ return res.status(200).json({
         password
       );
 
-      res.cookie("auth_token", response.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (increased from 7 days)
-        path: "/",
-      });
+      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
 
       return res.status(200).json({
         success: true,
@@ -381,13 +379,7 @@ return res.status(200).json({
 
       const response = await authService.googleAuth(email, name, googleId);
 
-      res.cookie("auth_token", response.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (increased from 7 days)
-        path: "/",
-      });
+      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
 
       return res.status(200).json({
         success: true,
@@ -660,80 +652,108 @@ return res.status(200).json({
 
   /* ---------------- UNIFIED SIGNUP (NEW) ---------------- */
   async signupInitiate(req: Request, res: Response) {
-      try {
-          const { name, phone, email } = req.body;
-          if (!name || !phone || !email) {
-              return res.status(400).json({ success: false, message: "Name, phone, and email are required." });
-          }
-          const response = await authService.signupInitiate(name, phone, email);
-          return res.status(200).json({ success: true, ...response });
-      } catch (error: any) {
-          return res.status(error.statusCode || 400).json({ success: false, message: error.message });
+    try {
+      const { name, phone, email } = req.body;
+      if (!name || !phone || !email) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "Name, phone, and email are required.",
+          });
       }
+      const response = await authService.signupInitiate(name, phone, email);
+      return res.status(200).json({ success: true, ...response });
+    } catch (error: any) {
+      return res
+        .status(error.statusCode || 400)
+        .json({ success: false, message: error.message });
+    }
   }
 
   async signupComplete(req: Request, res: Response) {
-      try {
-          const { name, phone, email, password, otp } = req.body;
-          // Validations
-           if (!name || !phone || !email || !password || !otp) {
-              return res.status(400).json({ success: false, message: "All fields are required." });
-          }
-
-          const response = await authService.signupVerify(name, phone, email, password, otp);
-          res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
-          
-          return res.status(201).json({
-              success: true,
-              message: response.message,
-              user: response.user
-          });
-      } catch (error: any) {
-           return res.status(error.statusCode || 400).json({ success: false, message: error.message });
+    try {
+      const { name, phone, email, password, otp } = req.body;
+      // Validations
+      if (!name || !phone || !email || !password || !otp) {
+        return res
+          .status(400)
+          .json({ success: false, message: "All fields are required." });
       }
+
+      const response = await authService.signupVerify(
+        name,
+        phone,
+        email,
+        password,
+        otp
+      );
+      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+
+      return res.status(201).json({
+        success: true,
+        message: response.message,
+        user: response.user,
+      });
+    } catch (error: any) {
+      return res
+        .status(error.statusCode || 400)
+        .json({ success: false, message: error.message });
+    }
   }
 
   /* ---------------- UNIFIED LOGIN (NEW) ---------------- */
-   async loginInitiate(req: Request, res: Response) {
-      try {
-          const { phone, email } = req.body;
-           if (!phone || !email) {
-              return res.status(400).json({ success: false, message: "Phone and email are required." });
-          }
-          const response = await authService.loginInitiate(phone, email);
-          return res.status(200).json({ success: true, ...response });
-      } catch (error: any) {
-          return res.status(error.statusCode || 400).json({ success: false, message: error.message });
+  async loginInitiate(req: Request, res: Response) {
+    try {
+      const { phone, email } = req.body;
+      if (!phone || !email) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Phone and email are required." });
       }
+      const response = await authService.loginInitiate(phone, email);
+      return res.status(200).json({ success: true, ...response });
+    } catch (error: any) {
+      return res
+        .status(error.statusCode || 400)
+        .json({ success: false, message: error.message });
+    }
   }
 
   async loginComplete(req: Request, res: Response) {
-      try {
-          const { phone, email, otp } = req.body;
-          if (!phone || !email || !otp) {
-              return res.status(400).json({ success: false, message: "Phone, email, and OTP are required." });
-          }
-
-          const response = await authService.loginVerify(phone, email, otp);
-           if ((response as any).userNotFound) {
-               // Should not happen easily in this flow unless User explicitly enters wrong details
-               // But if it does, we handle it
-                return res.status(200).json({
-                  success: true,
-                  userNotFound: true,
-                  message: "No account found matching these credentials."
-                });
-           }
-
-          res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
-          return res.status(200).json({
-              success: true,
-              message: response.message,
-              user: (response as any).user // .user includes role
+    try {
+      const { phone, email, otp } = req.body;
+      if (!phone || !email || !otp) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "Phone, email, and OTP are required.",
           });
-      } catch (error: any) {
-          return res.status(error.statusCode || 400).json({ success: false, message: error.message });
       }
+
+      const response = await authService.loginVerify(phone, email, otp);
+      if ((response as any).userNotFound) {
+        // Should not happen easily in this flow unless User explicitly enters wrong details
+        // But if it does, we handle it
+        return res.status(200).json({
+          success: true,
+          userNotFound: true,
+          message: "No account found matching these credentials.",
+        });
+      }
+
+      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      return res.status(200).json({
+        success: true,
+        message: response.message,
+        user: (response as any).user, // .user includes role
+      });
+    } catch (error: any) {
+      return res
+        .status(error.statusCode || 400)
+        .json({ success: false, message: error.message });
+    }
   }
 }
 

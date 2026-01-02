@@ -37,11 +37,18 @@ export function handleUnexpectedError(
   context: string
 ): Response {
   // Log the full error for debugging (server-side only)
-  console.error(`[ERROR] ${context}:`, {
-    error: error instanceof Error ? error.message : String(error),
-    stack: error instanceof Error ? error.stack : undefined,
-    timestamp: new Date().toISOString(),
-  });
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[ERROR] ${context}:`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString(),
+    });
+  } else {
+    console.error(`[ERROR] ${context}:`, {
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   // Return user-safe error message
   return sendErrorResponse(

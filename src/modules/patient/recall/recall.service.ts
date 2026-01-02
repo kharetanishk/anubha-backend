@@ -3,10 +3,10 @@ import { CreateRecallInput } from "./recall.validation";
 
 export async function createRecall(data: CreateRecallInput, userId: string) {
   // console.log(" [RECALL SERVICE] Starting recall creation");
-const { patientId, notes, entries, appointmentId } = data;
+  const { patientId, notes, entries, appointmentId } = data;
 
   // console.log(" [RECALL SERVICE] Verifying patient ownership...");
-const patient = await prisma.patientDetials.findFirst({
+  const patient = await prisma.patientDetials.findFirst({
     where: { id: patientId, userId },
   });
   if (!patient) {
@@ -17,10 +17,10 @@ const patient = await prisma.patientDetials.findFirst({
   // id: patient.id,
   // name: patient.name,
   // });
-// If appointmentId is provided, verify it belongs to the same patient
+  // If appointmentId is provided, verify it belongs to the same patient
   if (appointmentId) {
     // console.log(" [RECALL SERVICE] Verifying appointment ownership...");
-const appointment = await prisma.appointment.findFirst({
+    const appointment = await prisma.appointment.findFirst({
       where: { id: appointmentId, patientId, userId },
     });
     if (!appointment) {
@@ -28,13 +28,13 @@ const appointment = await prisma.appointment.findFirst({
       throw new Error("Invalid appointment or unauthorized");
     }
     // console.log(" [RECALL SERVICE] Appointment verified:", {
-    // id: appointment.id,
-    // status: appointment.status,
+    //   id: appointment.id,
+    //   status: appointment.status,
     // });
-    // }
+  }
 
   // console.log(" [RECALL SERVICE] Creating recall with entries...");
-const recall = await prisma.recall.create({
+  const recall = await prisma.recall.create({
     data: {
       patientId,
       notes: notes ?? null,
@@ -53,11 +53,11 @@ const recall = await prisma.recall.create({
   });
 
   // console.log(" [RECALL SERVICE] Recall created successfully:", {
-  // id: recall.id,
-  // entriesCount: recall.entries.length,
+  //   id: recall.id,
+  //   entriesCount: recall.entries.length,
   // });
-  // return recall;
-  // }
+  return recall;
+}
 
 export async function deleteRecallEntry(
   recallId: string,

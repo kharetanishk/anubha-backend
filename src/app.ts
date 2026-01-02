@@ -58,13 +58,34 @@ const getAllowedOrigins = (): (string | RegExp)[] => {
       "http://192.168.29.116:3000",
       /^http:\/\/192\.168\.\d+\.\d+:3000$/
     );
-    // Also add FRONTEND_URL in development if set (for testing production URLs locally)
-    if (process.env.FRONTEND_URL) {
-      origins.push(process.env.FRONTEND_URL.trim());
+    // Also add FRONTEND_URL from env config (defaults to localhost:3000 in dev)
+    const frontendUrl = env.FRONTEND_URL || process.env.FRONTEND_URL;
+    if (frontendUrl) {
+      const trimmedUrl = frontendUrl.trim();
+      // Check if URL is already in origins (as string or would match a regex)
+      const urlExists = origins.some(
+        (origin) =>
+          origin === trimmedUrl ||
+          (typeof origin === "string" && origin === trimmedUrl)
+      );
+      if (!urlExists) {
+        origins.push(trimmedUrl);
+      }
     }
   }
 
-  return origins.length > 0 ? origins : ["http://localhost:3000"]; // Fallback
+  // In production, fail if no origins configured
+  if (process.env.NODE_ENV === "production") {
+    if (origins.length === 0) {
+      throw new Error(
+        "CORS_ORIGINS or FRONTEND_URL must be set in production environment"
+      );
+    }
+    return origins;
+  }
+
+  // Development fallback
+  return origins.length > 0 ? origins : ["http://localhost:3000"];
 };
 
 app.use(
@@ -333,10 +354,30 @@ async function startServer() {
 
     // Start Express server
     app.listen(PORT, "0.0.0.0", () => {
-      // console.log("==========================================");
-      // console.log(`🚀 Server running on http://localhost:${PORT}`);
-      // console.log(`📝 Environment: ${env.NODE_ENV}`);
-      // console.log("==========================================");
+      if (env.NODE_ENV === "development") {
+        console.log("==========================================");
+        console.log(`🚀 Server running on http://localhost:${PORT}`);
+        console.log(`📝 Environment: ${env.NODE_ENV}`);
+        console.log("🔧 Development Mode Configuration:");
+        console.log(
+          `   - Frontend URL: ${env.FRONTEND_URL || "http://localhost:3000"}`
+        );
+        console.log("   - Cookie settings:");
+        console.log("     * httpOnly: true");
+        console.log("     * secure: false (localhost allowed)");
+        console.log("     * sameSite: lax");
+        console.log("   - CORS: localhost:3000 enabled");
+        console.log("   - Allowed origins:");
+        const origins = getAllowedOrigins();
+        origins.forEach((origin) => {
+          console.log(`     * ${origin}`);
+        });
+        console.log("==========================================");
+      }
+      // Production: Minimal logging
+      if (env.NODE_ENV === "production") {
+        console.log(`Server started on port ${PORT}`);
+      }
     });
   } catch (error: any) {
     console.error("==========================================");

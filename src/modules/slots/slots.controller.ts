@@ -79,21 +79,21 @@ export async function removeDayOffHandler(req: Request, res: Response) {
 export async function getAvailableSlotsHandler(req: Request, res: Response) {
   try {
     // console.log(" [SLOTS CONTROLLER] Available slots request received");
-// console.log(" [SLOTS CONTROLLER] Query params:", req.query);
-const parsed = availableSlotsQuerySchema.parse(req.query);
+    // console.log(" [SLOTS CONTROLLER] Query params:", req.query);
+    const parsed = availableSlotsQuerySchema.parse(req.query);
     // console.log(" [SLOTS CONTROLLER] Validated query:", parsed);
-const slots = await getAvailableSlotsForDate(parsed);
+    const slots = await getAvailableSlotsForDate(parsed);
 
     // console.log(" [SLOTS CONTROLLER] Returning slots:", {
-    // count: slots.length,
-    // date: parsed.date,
-    // mode: parsed.mode,
+    //   count: slots.length,
+    //   date: parsed.date,
+    //   mode: parsed.mode,
     // });
-    // return res.status(200).json({
-    // success: true,
-    // data: slots,
-    // });
-    // } catch (err: any) {
+    return res.status(200).json({
+      success: true,
+      data: slots,
+    });
+  } catch (err: any) {
     // console.error(" [SLOTS CONTROLLER] getAvailableSlotsHandler error:", err);
     console.error(" [SLOTS CONTROLLER] Error details:", {
       message: err?.message,

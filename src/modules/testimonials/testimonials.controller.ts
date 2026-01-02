@@ -68,8 +68,7 @@ export async function createTestimonial(req: Request, res: Response) {
     console.error("[TESTIMONIALS] Create error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to create testimonial",
-      error: error.message,
+      message: "Something went wrong",
     });
   }
 }
@@ -92,8 +91,7 @@ export async function getAllTestimonials(req: Request, res: Response) {
     console.error("[TESTIMONIALS] Get all error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch testimonials",
-      error: error.message,
+      message: "Something went wrong",
     });
   }
 }
@@ -130,8 +128,7 @@ export async function getActiveTestimonials(req: Request, res: Response) {
     console.error("[TESTIMONIALS] Get active error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch testimonials",
-      error: error.message,
+      message: "Something went wrong",
     });
   }
 }
@@ -223,8 +220,7 @@ export async function updateTestimonial(req: Request, res: Response) {
     console.error("[TESTIMONIALS] Update error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to update testimonial",
-      error: error.message,
+      message: "Something went wrong",
     });
   }
 }
@@ -273,8 +269,7 @@ export async function deleteTestimonial(req: Request, res: Response) {
     console.error("[TESTIMONIALS] Delete error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to delete testimonial",
-      error: error.message,
+      message: "Something went wrong",
     });
   }
 }

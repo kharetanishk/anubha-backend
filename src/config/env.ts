@@ -200,7 +200,7 @@ export function validateEnv(): ValidationResult {
     config.PORT = port;
   }
 
-  // Node Environment
+  // Node Environment - Default to development for local dev
   const nodeEnv = (process.env.NODE_ENV || "development") as
     | "development"
     | "production"
@@ -212,6 +212,17 @@ export function validateEnv(): ValidationResult {
   }
   config.NODE_ENV = nodeEnv;
 
+  // Log environment in development
+  if (nodeEnv === "development") {
+    console.log("🔧 Running in DEVELOPMENT mode");
+    console.log(
+      "   - Frontend URL:",
+      config.FRONTEND_URL || "http://localhost:3000"
+    );
+    console.log("   - Cookies: httpOnly=true, secure=false, sameSite=lax");
+    console.log("   - CORS: localhost:3000 enabled");
+  }
+
   // Optional: Meta WhatsApp (for testing)
   if (process.env.WHATSAPP_PHONE_NUMBER_ID) {
     config.WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -221,13 +232,16 @@ export function validateEnv(): ValidationResult {
     config.META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
   }
 
-  // Frontend URL - required in production
+  // Frontend URL - required in production, defaults to localhost:3000 in development
   if (process.env.FRONTEND_URL) {
     config.FRONTEND_URL = process.env.FRONTEND_URL;
   } else if (process.env.NODE_ENV === "production") {
     warnings.push(
       "FRONTEND_URL is not set. Password reset links may not work correctly in production."
     );
+  } else {
+    // Default to localhost:3000 in development
+    config.FRONTEND_URL = "http://localhost:3000";
   }
 
   // CORS Origins - recommended in production

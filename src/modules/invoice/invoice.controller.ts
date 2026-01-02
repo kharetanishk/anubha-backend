@@ -107,7 +107,7 @@ return res.json({
     console.error("[INVOICE] Error in downloadInvoiceHandler:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to download invoice",
+      error: "Something went wrong",
     });
   }
 }
@@ -184,7 +184,7 @@ export async function getInvoiceByAppointmentHandler(
     console.error("[INVOICE] Error in getInvoiceByAppointmentHandler:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to fetch invoice",
+      error: "Something went wrong",
     });
   }
 }
@@ -278,7 +278,7 @@ export async function generateInvoiceHandler(req: Request, res: Response) {
     console.error("[INVOICE] Error in generateInvoiceHandler:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to generate invoice",
+      error: "Something went wrong",
     });
   }
 }

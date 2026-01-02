@@ -31,8 +31,8 @@ export async function attachUser(
         // timestamp: new Date()
         // .toISOString(),
         // });
-        // }
-        // return next();
+      }
+      return next();
     }
 
     const decoded = verifyToken(token);
@@ -50,18 +50,27 @@ export async function attachUser(
       // path: req.path,
       // method: req.method,
       // });
-      // }
+    }
 
     return next();
   } catch (err: any) {
     // Log token verification errors for monitoring
-    console.error("[AUTH] Token verification error:", {
-      error: err.message,
-      stack: err.stack,
-      path: req.path,
-      method: req.method,
-      timestamp: new Date().toISOString(),
-    });
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[AUTH] Token verification error:", {
+        error: err.message,
+        stack: err.stack,
+        path: req.path,
+        method: req.method,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      console.error("[AUTH] Token verification error:", {
+        error: err.message,
+        path: req.path,
+        method: req.method,
+        timestamp: new Date().toISOString(),
+      });
+    }
     // Continue without user - let requireAuth middleware handle authorization
     return next();
   }
