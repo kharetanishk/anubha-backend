@@ -343,6 +343,17 @@ export class AuthController {
         });
       }
 
+      // Validate email format if identifier contains @
+      if (identifier.includes("@")) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(identifier.trim())) {
+          return res.status(400).json({
+            success: false,
+            message: "Please enter a valid email address",
+          });
+        }
+      }
+
       const response = await authService.loginWithPassword(
         identifier,
         password
