@@ -455,6 +455,8 @@ export class AuthService {
       select: { id: true, phone: true, email: true },
     });
 
+    const phoneExists = !!(userByPhone || adminByPhone);
+
     // Check if email exists in User or Admin tables
     const userByEmail = await prisma.user.findFirst({
       where: { email: normalizedEmail },
@@ -466,73 +468,58 @@ export class AuthService {
       select: { id: true, phone: true, email: true },
     });
 
-    // Determine if phone and email belong to accounts and check if they match
-    // Case 1: Both phone and email exist in User table
+    const emailExists = !!(userByEmail || adminByEmail);
+
+    // Case 1: Neither phone nor email exists
+    if (!phoneExists && !emailExists) {
+      throw new AppError("Account not found. Please sign up to continue.", 404);
+    }
+
+    // Case 2: Only phone exists OR only email exists (but not both)
+    if (phoneExists && !emailExists) {
+      throw new AppError(
+        "Either the phone number or email is incorrect. Please check and try again.",
+        400
+      );
+    }
+
+    if (!phoneExists && emailExists) {
+      throw new AppError(
+        "Either the phone number or email is incorrect. Please check and try again.",
+        400
+      );
+    }
+
+    // Case 3: Both phone and email exist - check if they belong to the same account
+    // Check User table first
     if (userByPhone && userByEmail) {
       if (userByPhone.id !== userByEmail.id) {
         throw new AppError(
-          "Phone number and email do not belong to the same account. Please verify your credentials.",
+          "The phone number and email do not belong to the same account.",
           400
         );
       }
       // They belong to the same user - proceed with OTP sending
     }
-    // Case 2: Both phone and email exist in Admin table
+    // Check Admin table
     else if (adminByPhone && adminByEmail) {
       if (adminByPhone.id !== adminByEmail.id) {
         throw new AppError(
-          "Phone number and email do not belong to the same account. Please verify your credentials.",
+          "The phone number and email do not belong to the same account.",
           400
         );
       }
       // They belong to the same admin - proceed with OTP sending
     }
-    // Case 3: Phone exists in User, email exists in Admin (or vice versa) - mismatch
+    // Phone exists in one table, email exists in another table - mismatch
     else if ((userByPhone || adminByPhone) && (userByEmail || adminByEmail)) {
       throw new AppError(
-        "Phone number and email do not belong to the same account. Please verify your credentials.",
+        "The phone number and email do not belong to the same account.",
         400
       );
     }
-    // Case 4: Phone exists but email doesn't exist in any table
-    else if (userByPhone || adminByPhone) {
-      const phoneOwner = userByPhone || adminByPhone;
-      if (phoneOwner) {
-        // Check if the phone owner's email matches the provided email
-        // If phone owner has an email, it must match
-        if (phoneOwner.email) {
-          const ownerEmail = this.normalizeEmail(phoneOwner.email);
-          if (ownerEmail !== normalizedEmail) {
-            throw new AppError(
-              "The provided email does not match the phone number's account.",
-              400
-            );
-          }
-        }
-        // If phone owner has no email (phone-only account), allow - email will be used for linking
-      }
-    }
-    // Case 5: Email exists but phone doesn't exist in any table
-    else if (userByEmail || adminByEmail) {
-      const emailOwner = userByEmail || adminByEmail;
-      if (emailOwner) {
-        // Check if the email owner's phone matches the provided phone
-        // If email owner has a phone, it must match
-        if (emailOwner.phone) {
-          const ownerPhone = this.normalizePhone(emailOwner.phone);
-          if (ownerPhone !== normalizedPhone) {
-            throw new AppError(
-              "The provided phone number does not match the email's account.",
-              400
-            );
-          }
-        }
-        // If email owner has no phone (email-only account), allow - phone will be used for linking
-      }
-    }
-    // Case 6: Neither phone nor email exists - allow OTP sending for account linking flow
 
-    // Send OTP to both channels
+    // All validations passed - send OTP to both channels
     await this.createDualChannelOtp(normalizedPhone, normalizedEmail);
     return { message: "OTP sent to your email and phone." };
   }
