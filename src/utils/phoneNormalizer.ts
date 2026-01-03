@@ -1,7 +1,7 @@
 /**
  * Phone number normalization utility
  * Normalizes phone numbers to a consistent format at database level
- * Handles formats like: "916260440241", "6260440241", "+916260440241"
+ * Handles formats like: "919713885582", "9713885582", "+919713885582"
  *
  * Normalization rules:
  * - Remove all non-digit characters

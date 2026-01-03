@@ -14,7 +14,7 @@ const MSG91_API_URL =
 const INTEGRATED_NUMBER = process.env.MSG91_INTEGRATED_NUMBER || "917880293523";
 const MSG91_NAMESPACE = "bd7eaf00_3a31_451d_8435_6cd400ead584";
 // Admin phone number - fixed phone number for admin notifications
-const ADMIN_PHONE_NUMBER = "916260440241";
+const ADMIN_PHONE_NUMBER = "919713885582";
 
 // Development mode check
 const IS_DEVELOPMENT = process.env.NODE_ENV !== "production";
@@ -36,13 +36,13 @@ function getAuthKey(): string | null {
   // 1️⃣ Validate environment variable loading
   if (IS_DEVELOPMENT) {
     // console.log("[WHATSAPP DEBUG] Environment variable check:");
-// console.log("  - MSG91_AUTH_KEY exists:", !!rawKey);
-// console.log("  - Type:", typeof rawKey);
-// console.log(
-// "  - Raw value (first check)
-// :",
-// rawKey ? `"${rawKey}"` : "undefined"
-// );
+    // console.log("  - MSG91_AUTH_KEY exists:", !!rawKey);
+    // console.log("  - Type:", typeof rawKey);
+    // console.log(
+    // "  - Raw value (first check)
+    // :",
+    // rawKey ? `"${rawKey}"` : "undefined"
+    // );
   }
 
   if (!rawKey) {
@@ -63,9 +63,9 @@ function getAuthKey(): string | null {
       // console.warn(
       // "[WHATSAPP DEBUG] ⚠️ MSG91_AUTH_KEY has leading/trailing whitespace"
       // );
-// console.warn("  - Before trim length:", rawKey.length);
-// console.warn("  - After trim length:", trimmedKey.length);
-}
+      // console.warn("  - Before trim length:", rawKey.length);
+      // console.warn("  - After trim length:", trimmedKey.length);
+    }
   }
 
   // Check for quotes inside .env (common mistake: MSG91_AUTH_KEY="value" with quotes)
@@ -97,9 +97,9 @@ function getAuthKey(): string | null {
 
   if (IS_DEVELOPMENT) {
     // console.log("[WHATSAPP DEBUG] ✅ MSG91_AUTH_KEY validated:");
-// console.log("  - Length:", trimmedKey.length, "characters");
-// console.log("  - Masked:", maskKey(trimmedKey)
-// );
+    // console.log("  - Length:", trimmedKey.length, "characters");
+    // console.log("  - Masked:", maskKey(trimmedKey)
+    // );
     // console.log("  - Starts with:", trimmedKey.substring(0, 5)
     // );
   }
@@ -115,7 +115,7 @@ if (!MSG91_AUTH_KEY) {
   // console.warn(
   // "[WHATSAPP] ⚠️ MSG91_AUTH_KEY is not set in environment variables"
   // );
-// console.warn("[WHATSAPP] Please add MSG91_AUTH_KEY to your .env file");
+  // console.warn("[WHATSAPP] Please add MSG91_AUTH_KEY to your .env file");
 } else {
   // console.log(
   // "[WHATSAPP] ✅ MSG91_AUTH_KEY is configured (length:",
@@ -139,7 +139,7 @@ export async function testMsg91Connection(): Promise<{
   details?: any;
 }> {
   // console.log("[WHATSAPP TEST] Starting MSG91 connection test...");
-if (!MSG91_AUTH_KEY) {
+  if (!MSG91_AUTH_KEY) {
     return {
       success: false,
       error: "MSG91_AUTH_KEY is not configured",
@@ -147,7 +147,7 @@ if (!MSG91_AUTH_KEY) {
   }
 
   // Use a test phone number (admin phone for testing)
-  const testPhone = "916260440241"; // Admin phone
+  const testPhone = "919713885582"; // Admin phone
   const testTemplate = "testing_nut";
 
   // Trim auth key
@@ -183,13 +183,13 @@ if (!MSG91_AUTH_KEY) {
     )}`;
 
     // console.log("[WHATSAPP TEST] Request details:");
-// console.log("  - URL:", MSG91_API_URL);
-// console.log("  - Auth key (masked)
-// :", maskKey(authKeyTrimmed));
+    // console.log("  - URL:", MSG91_API_URL);
+    // console.log("  - Auth key (masked)
+    // :", maskKey(authKeyTrimmed));
     // console.log("  - Integrated number:", INTEGRATED_NUMBER);
-// console.log("  - Template:", testTemplate);
-// console.log("  - Test phone:", testPhone);
-const response = await axios.post(apiUrlWithAuth, requestBody, {
+    // console.log("  - Template:", testTemplate);
+    // console.log("  - Test phone:", testPhone);
+    const response = await axios.post(apiUrlWithAuth, requestBody, {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -198,9 +198,9 @@ const response = await axios.post(apiUrlWithAuth, requestBody, {
     });
 
     // console.log("[WHATSAPP TEST] ✅ Success!");
-// console.log("  - Status:", response.status);
-// console.log("  - Response:", JSON.stringify(response.data, null, 2)
-// );
+    // console.log("  - Status:", response.status);
+    // console.log("  - Response:", JSON.stringify(response.data, null, 2)
+    // );
 
     return {
       success: true,
@@ -356,33 +356,33 @@ export async function sendWhatsAppMessage(
 
     if (IS_DEVELOPMENT) {
       // console.log("[WHATSAPP DEBUG] Outgoing request details:");
-// console.log("  - Endpoint URL:", MSG91_API_URL);
-// console.log(
-// "  - Full URL (with auth)
-// :",
-// apiUrlWithAuth.replace(authKeyTrimmed, maskKey(authKeyTrimmed))
-// );
+      // console.log("  - Endpoint URL:", MSG91_API_URL);
+      // console.log(
+      // "  - Full URL (with auth)
+      // :",
+      // apiUrlWithAuth.replace(authKeyTrimmed, maskKey(authKeyTrimmed))
+      // );
       // console.log("  - Headers:");
-// console.log("    * Content-Type:", requestHeaders["Content-Type"]);
-// console.log("    * Accept:", requestHeaders.Accept);
-// console.log("    * authkey (masked)
-// :", maskKey(authKeyTrimmed));
+      // console.log("    * Content-Type:", requestHeaders["Content-Type"]);
+      // console.log("    * Accept:", requestHeaders.Accept);
+      // console.log("    * authkey (masked)
+      // :", maskKey(authKeyTrimmed));
       // console.log("    * authkey length:", authKeyTrimmed.length);
-// console.log("  - Integrated number:", integratedNumberTrimmed);
-// console.log("  - Template name:", templateName);
-// console.log("  - To:", formattedPhone);
-// console.log("  - Payload:", JSON.stringify(requestBody, null, 2)
-// );
+      // console.log("  - Integrated number:", integratedNumberTrimmed);
+      // console.log("  - Template name:", templateName);
+      // console.log("  - To:", formattedPhone);
+      // console.log("  - Payload:", JSON.stringify(requestBody, null, 2)
+      // );
     }
 
     // 4️⃣ Check for accidental use of SMS auth key instead of WhatsApp auth key
     if (IS_DEVELOPMENT) {
       // console.log("[WHATSAPP DEBUG] Key validation:");
-// console.log("  - Key source: process.env.MSG91_AUTH_KEY");
-// console.log("  - Key type: WhatsApp API (not SMS)
-// ");
+      // console.log("  - Key source: process.env.MSG91_AUTH_KEY");
+      // console.log("  - Key type: WhatsApp API (not SMS)
+      // ");
       // console.log("  - Key format check: Should be alphanumeric string");
-if (!/^[A-Za-z0-9]+$/.test(authKeyTrimmed)) {
+      if (!/^[A-Za-z0-9]+$/.test(authKeyTrimmed)) {
         // console.warn(
         // "  - ⚠️ Key contains non-alphanumeric characters (may be invalid)
         // "
@@ -396,20 +396,20 @@ if (!/^[A-Za-z0-9]+$/.test(authKeyTrimmed)) {
 
     if (IS_DEVELOPMENT) {
       // console.log("[WHATSAPP DEBUG] ✅ Request successful:");
-// console.log("  - Status:", response.status);
-// console.log("  - Response:", JSON.stringify(response.data, null, 2)
-// );
+      // console.log("  - Status:", response.status);
+      // console.log("  - Response:", JSON.stringify(response.data, null, 2)
+      // );
     }
 
     // console.log("==========================================");
-// console.log("[WHATSAPP API] ✅ Message sent successfully");
-// console.log("  To:", formattedPhone);
-// console.log("  Template:", templateName);
-// console.log("  Response Status:", response.status);
-// console.log("  Response Data:", JSON.stringify(response.data, null, 2)
-// );
+    // console.log("[WHATSAPP API] ✅ Message sent successfully");
+    // console.log("  To:", formattedPhone);
+    // console.log("  Template:", templateName);
+    // console.log("  Response Status:", response.status);
+    // console.log("  Response Data:", JSON.stringify(response.data, null, 2)
+    // );
     // console.log("==========================================");
-return {
+    return {
       success: true,
       message: "WhatsApp message sent successfully",
     };
@@ -547,7 +547,7 @@ export async function sendPatientConfirmationMessage(
 
 /**
  * Send admin notification WhatsApp message using doctor_confirmation template
- * Always sends to fixed admin phone number: 916260440241
+ * Always sends to fixed admin phone number: 919713885582
  * Template variables:
  * - header_1: Plan name
  * - body_1: Patient name (from patient details)
@@ -891,10 +891,10 @@ export async function sendOtpMessage(
     };
 
     // console.log("[OTP] Sending OTP via MSG91 WhatsApp:");
-// console.log("  - Phone:", formattedPhone);
-// console.log("  - OTP:", otp);
-// console.log("  - Template: login_magic");
-// Make API request
+    // console.log("  - Phone:", formattedPhone);
+    // console.log("  - OTP:", otp);
+    // console.log("  - Template: login_magic");
+    // Make API request
     const apiUrlWithAuth = `${MSG91_API_URL}?authkey=${encodeURIComponent(
       authKeyTrimmed
     )}`;
@@ -908,9 +908,9 @@ export async function sendOtpMessage(
     });
 
     // console.log("[OTP] ✅ OTP sent successfully");
-// console.log("  - Status:", response.status);
-// console.log("  - Response:", JSON.stringify(response.data, null, 2)
-// );
+    // console.log("  - Status:", response.status);
+    // console.log("  - Response:", JSON.stringify(response.data, null, 2)
+    // );
 
     return {
       success: true,

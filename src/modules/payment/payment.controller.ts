@@ -1606,9 +1606,9 @@ async function sendWhatsAppNotifications(
       }
     }
 
-    // Send admin notification using doctor_confirmation template (fixed admin phone: 916260440241)
+    // Send admin notification using doctor_confirmation template (fixed admin phone: 919713885582)
     // console.log("[WHATSAPP CONFIRMATION] Sending admin notification...");
-    // console.log("  Admin Phone: 916260440241 (fixed)
+    // console.log("  Admin Phone: 919713885582 (fixed)
     // ");
     // console.log("  Template: doctor_confirmation");
     try {
@@ -1636,13 +1636,13 @@ async function sendWhatsAppNotifications(
         // console.log(
         // "[WHATSAPP CONFIRMATION] ✅ Admin notification sent successfully"
         // );
-        // console.log("  Admin Phone: 916260440241");
+        // console.log("  Admin Phone: 919713885582");
         // console.log("  Template: doctor_confirmation");
         // console.log("==========================================");
       } else {
         console.error("==========================================");
         console.error("[WHATSAPP CONFIRMATION] ❌ Admin notification failed");
-        console.error("  Admin Phone: 916260440241");
+        console.error("  Admin Phone: 919713885582");
         console.error("  Error:", adminResult.error);
         console.error("==========================================");
       }

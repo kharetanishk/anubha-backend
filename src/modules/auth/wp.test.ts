@@ -8,7 +8,7 @@ async function sendTemplateMsg() {
       `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
-        to: "916260440241",
+        to: "919713885582",
         type: "template",
         template: {
           name: "hello_world",
@@ -24,7 +24,7 @@ async function sendTemplateMsg() {
     );
 
     // console.log("Sent:", response.data);
-} catch (err: any) {
+  } catch (err: any) {
     console.error("Error:", err.response?.data || err.message);
   }
 }

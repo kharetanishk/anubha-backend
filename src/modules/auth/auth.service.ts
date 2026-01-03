@@ -12,6 +12,17 @@ import { sendPasswordResetEmail, sendEmailOtp } from "../../utils/mailer";
 
 export class AuthService {
   /**
+   * Normalize email to lowercase and trim whitespace
+   * Emails should always be stored in lowercase for consistency
+   */
+  private normalizeEmail(email: string): string {
+    if (!email || typeof email !== "string") {
+      return email;
+    }
+    return email.trim().toLowerCase();
+  }
+
+  /**
    * Normalize phone number using centralized utility
    * Phone normalization is now handled at database level via Prisma middleware
    * This method is kept for backward compatibility and search operations
@@ -326,12 +337,15 @@ export class AuthService {
 
   /* ---------------- UNIFIED SIGNUP (NEW) ---------------- */
   async signupInitiate(name: string, phone: string, email: string) {
+    // Normalize email
+    const normalizedEmail = this.normalizeEmail(email);
+
     // Check if user exists with phone or email
     const existingUser = await prisma.user.findFirst({
       where: {
         OR: [
           { phone: phone }, // Expect normalized phone from controller/input
-          { email: email.toLowerCase() },
+          { email: normalizedEmail },
         ],
       },
     });
@@ -343,7 +357,7 @@ export class AuthService {
       );
     }
 
-    await this.createDualChannelOtp(phone, email);
+    await this.createDualChannelOtp(phone, normalizedEmail);
     return { message: "OTP sent to your email and phone." };
   }
 
@@ -354,10 +368,13 @@ export class AuthService {
     password: string,
     otp: string
   ) {
+    // Normalize email
+    const normalizedEmail = this.normalizeEmail(email);
+
     // Re-check uniqueness (race condition)
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ phone: phone }, { email: email.toLowerCase() }],
+        OR: [{ phone: phone }, { email: normalizedEmail }],
       },
     });
     if (existingUser) throw new AppError("Account already exists.", 409);
@@ -365,7 +382,7 @@ export class AuthService {
     // Verify OTP against Phone OR Email record
     const foundOtp = await prisma.oTP.findFirst({
       where: {
-        OR: [{ phone: phone }, { email: email }],
+        OR: [{ phone: phone }, { email: normalizedEmail }],
       },
       orderBy: { createdAt: "desc" },
     });
@@ -380,7 +397,7 @@ export class AuthService {
     // Verify success - delete used OTPs
     await prisma.oTP.deleteMany({
       where: {
-        OR: [{ phone: phone }, { email: email }],
+        OR: [{ phone: phone }, { email: normalizedEmail }],
       },
     });
 
@@ -390,7 +407,7 @@ export class AuthService {
       data: {
         name,
         phone,
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         password: hashedPassword,
         role: "USER",
       },
@@ -425,7 +442,7 @@ export class AuthService {
     }
 
     // Normalize email
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = this.normalizeEmail(email);
 
     // Check if phone exists in User or Admin tables
     const userByPhone = await prisma.user.findFirst({
@@ -484,7 +501,7 @@ export class AuthService {
         // Check if the phone owner's email matches the provided email
         // If phone owner has an email, it must match
         if (phoneOwner.email) {
-          const ownerEmail = phoneOwner.email.toLowerCase().trim();
+          const ownerEmail = this.normalizeEmail(phoneOwner.email);
           if (ownerEmail !== normalizedEmail) {
             throw new AppError(
               "The provided email does not match the phone number's account.",
@@ -797,7 +814,7 @@ export class AuthService {
   async forgotPassword(email: string): Promise<{ message: string }> {
     // console.log("[AUTH] forgotPassword called with email:", email);
     // Normalize email (trim and lowercase)
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(email);
 
     // Check if user exists with this email
     // Note: Only User table for password reset (not Admin)
@@ -1018,7 +1035,7 @@ export class AuthService {
     // phone,
     // });
     // Normalize email
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(email);
 
     // Check if user exists with this email
     const user = await prisma.user.findUnique({
@@ -1097,7 +1114,7 @@ export class AuthService {
     // phone,
     // });
     // Normalize inputs
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(email);
     const normalizedPhone = this.normalizePhone(phone);
 
     // Find user
@@ -1232,7 +1249,7 @@ export class AuthService {
     // email,
     // });
     // Normalize email
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(email);
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1324,7 +1341,7 @@ export class AuthService {
     // email,
     // });
     // Normalize email
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(email);
 
     // Get current user
     const user = await prisma.user.findUnique({
@@ -1581,14 +1598,12 @@ export class AuthService {
     email: string, // email is required, not nullable
     password: string
   ) {
-    // console.log("[AUTH] signupWithPassword called with:", {
-    // name,
-    // phone,
-    // email,
-    // });
+    // Normalize email
+    const normalizedEmail = this.normalizeEmail(email);
+
     // Check if user already exists by email
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (existingUser) {
@@ -1614,7 +1629,7 @@ export class AuthService {
     // email is required in signup, so it's guaranteed to be a string (not null)
     const userData: any = {
       name,
-      email: email, // email is required in signup
+      email: normalizedEmail, // Store normalized email
       password: hashedPassword,
     };
 
@@ -1645,7 +1660,7 @@ export class AuthService {
     // First, check if this is an admin email/phone
     let admin = null;
     if (isEmail) {
-      const normalizedEmail = identifier.trim().toLowerCase();
+      const normalizedEmail = this.normalizeEmail(identifier);
       admin = await prisma.admin.findUnique({
         where: { email: normalizedEmail },
       });
@@ -1695,8 +1710,10 @@ export class AuthService {
     // If not admin, check User table
     let user;
     if (isEmail) {
+      // Normalize email before querying
+      const normalizedEmail = this.normalizeEmail(identifier);
       user = await prisma.user.findUnique({
-        where: { email: identifier },
+        where: { email: normalizedEmail },
       });
     } else {
       const normalizedPhone = this.normalizePhone(identifier);
@@ -1758,7 +1775,7 @@ export class AuthService {
   async googleAuth(email: string, name: string, googleId?: string) {
     // console.log("[AUTH] googleAuth called with:", { email, name });
     // CRITICAL: Normalize email (trim, lowercase) to ensure consistent matching
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(email);
 
     // STEP 1: Find user by email (email is globally unique)
     let user = (await prisma.user.findUnique({
@@ -1820,7 +1837,7 @@ export class AuthService {
    */
   async findOwnerByEmailOrPhone(identifier: string) {
     // Normalize identifier (trim, lowercase) for email matching
-    const normalizedIdentifier = identifier.trim().toLowerCase();
+    const normalizedIdentifier = this.normalizeEmail(identifier);
 
     // STEP 1: Try to find by email first (email is globally unique)
     // Use findUnique for exact email match (faster and more reliable)

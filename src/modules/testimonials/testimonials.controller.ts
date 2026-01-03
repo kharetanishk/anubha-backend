@@ -163,7 +163,7 @@ export async function updateTestimonial(req: Request, res: Response) {
       const urlParts = existingTestimonial.imageUrl.split("/");
       const folderAndFile = urlParts.slice(-2).join("/");
       const oldPublicId = folderAndFile.split(".")[0];
-      
+
       try {
         await deleteFromCloudinary(oldPublicId);
       } catch (err) {
@@ -249,7 +249,7 @@ export async function deleteTestimonial(req: Request, res: Response) {
     const urlParts = testimonial.imageUrl.split("/");
     const folderAndFile = urlParts.slice(-2).join("/");
     const publicId = folderAndFile.split(".")[0];
-    
+
     try {
       await deleteFromCloudinary(publicId);
     } catch (err) {
@@ -273,4 +273,3 @@ export async function deleteTestimonial(req: Request, res: Response) {
     });
   }
 }
-

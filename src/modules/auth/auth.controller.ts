@@ -655,12 +655,10 @@ export class AuthController {
     try {
       const { name, phone, email } = req.body;
       if (!name || !phone || !email) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Name, phone, and email are required.",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Name, phone, and email are required.",
+        });
       }
       const response = await authService.signupInitiate(name, phone, email);
       return res.status(200).json({ success: true, ...response });
@@ -724,12 +722,10 @@ export class AuthController {
     try {
       const { phone, email, otp } = req.body;
       if (!phone || !email || !otp) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "Phone, email, and OTP are required.",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Phone, email, and OTP are required.",
+        });
       }
 
       const response = await authService.loginVerify(phone, email, otp);
