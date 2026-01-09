@@ -14,13 +14,19 @@ import {
   generateSignedUrl,
   deleteFromCloudinary,
 } from "../../util/cloudinary";
+import { zonedTimeToUtc } from "date-fns-tz";
 
+const BUSINESS_TIMEZONE = "Asia/Kolkata";
+
+/**
+ * Create date range from query string (YYYY-MM-DD format).
+ * Converts date string to UTC Date objects representing start of day in IST.
+ */
 function dateRangeFromQuery(dateStr?: string) {
   if (!dateStr) return undefined;
-  const day = new Date(dateStr);
-  day.setHours(0, 0, 0, 0);
-  const nextDay = new Date(day);
-  nextDay.setDate(day.getDate() + 1);
+  // Convert date string to UTC Date object representing start of day in IST
+  const day = zonedTimeToUtc(`${dateStr}T00:00:00`, BUSINESS_TIMEZONE);
+  const nextDay = new Date(day.getTime() + 24 * 60 * 60 * 1000);
   return { gte: day, lt: nextDay };
 }
 

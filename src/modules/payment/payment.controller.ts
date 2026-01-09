@@ -457,6 +457,8 @@ export async function createOrderHandler(req: Request, res: Response) {
       });
     }
 
+    // Compare slot time (UTC from database) with current time (UTC)
+    // Both are UTC internally, so direct comparison is correct
     if (slot.startAt <= new Date()) {
       return res.status(400).json({
         success: false,
@@ -1454,11 +1456,14 @@ async function sendWhatsAppNotifications(
       return;
     }
 
+    // slotStartTime and slotEndTime are UTC Date objects from database
+    // All comparisons are done in UTC, which is correct since database stores UTC
     const slotTimeDate = new Date(slotStartTime);
     const slotEndTimeDate = slotEndTime ? new Date(slotEndTime) : undefined;
-    const now = new Date();
+    const now = new Date(); // Current UTC time
 
-    // Calculate reminder time (1 hour before slot time)
+    // Calculate reminder time (1 hour before slot time in UTC)
+    // reminderTime is stored in UTC in database, so cron job can compare UTC times directly
     const reminderTime = new Date(slotTimeDate.getTime() - 60 * 60 * 1000); // -1 hour
 
     // console.log("  Slot Time:", slotTimeDate.toISOString()
@@ -1469,6 +1474,7 @@ async function sendWhatsAppNotifications(
     // );
     // console.log("==========================================");
     // Case C: Booking at or after slot time (invalid - should not happen)
+    // Comparison is in UTC (both now and slotTimeDate are UTC)
     if (now >= slotTimeDate) {
       console.error(
         "[BOOKING CONFIRMATION] ❌ Invalid: Booking time is at or after slot time"
@@ -1507,6 +1513,7 @@ async function sendWhatsAppNotifications(
       });
     } else {
       // Case B: Booking inside reminder window (reminderTime <= now < slotTime)
+      // All comparisons are in UTC (reminderTime, now, and slotTimeDate are all UTC)
       if (reminderTime <= now && now < slotTimeDate) {
         // console.log("==========================================");
         // console.log(

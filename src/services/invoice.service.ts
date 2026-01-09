@@ -3,6 +3,9 @@ import fs from "fs";
 import path from "path";
 import prisma from "../database/prismaclient";
 import { uploadPDFToCloudinary } from "../util/cloudinary";
+import { formatInTimeZone } from "date-fns-tz";
+
+const BUSINESS_TIMEZONE = "Asia/Kolkata";
 
 // Invoice directory - relative to project root (temporary storage before Cloudinary upload)
 const INVOICE_DIR = path.join(process.cwd(), "invoices");
@@ -54,26 +57,19 @@ function formatCurrency(amount: number): string {
 }
 
 /**
- * Format date for display
+ * Format date for display in IST timezone.
+ * Uses formatInTimeZone to ensure consistent formatting regardless of server timezone.
  */
 function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-IN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return formatInTimeZone(date, BUSINESS_TIMEZONE, "d MMMM yyyy");
 }
 
 /**
- * Format time for display
+ * Format time for display in IST timezone.
+ * Uses formatInTimeZone to ensure consistent formatting regardless of server timezone.
  */
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-IN", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "Asia/Kolkata",
-  });
+  return formatInTimeZone(date, BUSINESS_TIMEZONE, "h:mm a");
 }
 
 /**
@@ -312,7 +308,7 @@ async function generateInvoicePDF(invoiceData: {
 
       stream.on("finish", () => {
         // console.log(`[INVOICE] PDF generated successfully: ${filePath}`);
-resolve(filePath);
+        resolve(filePath);
       });
 
       stream.on("error", (error) => {
@@ -343,7 +339,7 @@ export async function generateInvoiceForAppointment(
       // console.log(
       // `[INVOICE] Invoice already exists for appointment ${appointmentId}: ${existingInvoice.invoiceNumber}`
       // );
-return {
+      return {
         success: true,
         invoice: existingInvoice,
       };
@@ -409,7 +405,7 @@ return {
       // console.log(
       // `[INVOICE] Uploading invoice to Cloudinary: ${invoiceNumber}`
       // );
-const cloudinaryResult = await uploadPDFToCloudinary(pdfPath, {
+      const cloudinaryResult = await uploadPDFToCloudinary(pdfPath, {
         folder: "nutriwell_invoices",
         publicId: invoiceNumber,
         context: {
@@ -421,22 +417,22 @@ const cloudinaryResult = await uploadPDFToCloudinary(pdfPath, {
 
       pdfUrl = cloudinaryResult.secure_url;
       // console.log(`[INVOICE] ✅ Invoice uploaded to Cloudinary: ${pdfUrl}`);
-// Delete local file after successful upload to save disk space
+      // Delete local file after successful upload to save disk space
       try {
         fs.unlinkSync(pdfPath);
         // console.log(`[INVOICE] 🗑️ Local invoice file deleted: ${pdfPath}`);
-} catch (deleteError) {
+      } catch (deleteError) {
         // Non-critical error - log but don't fail
         // console.warn(
         // `[INVOICE] ⚠️ Failed to delete local file: ${deleteError}`
         // );
-}
+      }
     } catch (cloudinaryError: any) {
       console.error("[INVOICE] ❌ Cloudinary upload failed:", cloudinaryError);
       // Keep local file as fallback
       pdfUrl = `file://${pdfPath}`; // Fallback URL (indicates local storage)
       // console.warn(`[INVOICE] ⚠️ Using local file as fallback: ${pdfPath}`);
-}
+    }
 
     // Save invoice to database with Cloudinary URL
     const invoice = await prisma.invoice.create({
@@ -454,7 +450,7 @@ const cloudinaryResult = await uploadPDFToCloudinary(pdfPath, {
     // console.log(
     // `[INVOICE] ✅ Invoice generated successfully: ${invoiceNumber} for appointment ${appointmentId}`
     // );
-return {
+    return {
       success: true,
       invoice,
     };

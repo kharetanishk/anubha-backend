@@ -6,6 +6,9 @@ import {
   formatTimeForTemplate,
 } from "../services/whatsapp.service";
 import { getSingleAdmin } from "../modules/slots/slots.services";
+import { formatInTimeZone } from "date-fns-tz";
+
+const BUSINESS_TIMEZONE = "Asia/Kolkata";
 
 /**
  * Lock flag to prevent overlapping cron executions
@@ -56,12 +59,15 @@ export function startAppointmentReminderCron() {
  */
 async function checkAndSendReminders() {
   try {
-    // Get current time and round down to minute (seconds & ms = 0)
+    // Get current time in UTC (Date.now() returns UTC timestamp)
+    // All dates in database are stored in UTC, so we compare UTC times directly
+    // The reminderTime field is calculated as 1 hour before slot time (both in UTC)
     const now = new Date();
-    now.setSeconds(0, 0);
+    now.setSeconds(0, 0); // Round down to minute (seconds & ms = 0)
 
     // Calculate time window: reminderTime should be between (now - 10 minutes) and now
     // This makes it robust against small drifts - reminders are sent once even if cron runs slightly late
+    // Both now and tenMinutesAgo are UTC Date objects, so comparison with reminderTime (also UTC) is correct
     const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
 
     // console.log("==========================================");

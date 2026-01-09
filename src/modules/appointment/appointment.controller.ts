@@ -192,6 +192,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           }
 
           // SECURITY: Validate slot startAt is in the future
+          // slot.startAt is UTC from database, now is UTC, so comparison is correct
           const now = new Date();
           const minFutureTime = new Date(now.getTime() + 60 * 1000); // At least 1 minute in the future
           if (slot.startAt < minFutureTime) {
@@ -243,6 +244,8 @@ export async function createAppointmentHandler(req: Request, res: Response) {
 
       // DATA INTEGRITY: Validate that appointment dates match slot dates when slot is assigned
       // If startAt/endAt are provided, they MUST match the slot dates exactly
+      // Note: new Date(startAt) parses ISO strings correctly (UTC if 'Z' suffix, or specified timezone)
+      // Frontend should send ISO strings with timezone info to ensure correct parsing
       if (startAt || endAt) {
         const providedStartAt = startAt ? new Date(startAt) : null;
         const providedEndAt = endAt ? new Date(endAt) : null;
@@ -289,6 +292,8 @@ export async function createAppointmentHandler(req: Request, res: Response) {
     } else {
       // Create appointment without slot (for recall flow)
       // Use provided startAt/endAt or create placeholder dates
+      // Note: new Date() parses ISO strings correctly (UTC if 'Z' suffix, or specified timezone)
+      // Frontend should send ISO strings with timezone info to ensure correct parsing
       if (startAt && endAt) {
         // console.log(" [BACKEND] Using provided startAt/endAt dates");
         appointmentStartAt = new Date(startAt);
@@ -307,6 +312,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
         }
 
         // SECURITY: Validate startAt is in the future
+        // appointmentStartAt is UTC Date object, now is UTC, so comparison is correct
         const now = new Date();
         const minFutureTime = new Date(now.getTime() + 60 * 1000); // At least 1 minute in the future
         if (appointmentStartAt < minFutureTime) {
@@ -351,6 +357,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           }
 
           // SECURITY: Validate startAt is in the future
+          // appointmentStartAt is UTC Date object, now is UTC, so comparison is correct
           const now = new Date();
           const minFutureTime = new Date(now.getTime() + 60 * 1000); // At least 1 minute in the future
           if (appointmentStartAt < minFutureTime) {

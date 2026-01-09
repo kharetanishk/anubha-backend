@@ -1,5 +1,8 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import { formatInTimeZone } from "date-fns-tz";
+
+const BUSINESS_TIMEZONE = "Asia/Kolkata";
 
 // Ensure environment variables are loaded
 dotenv.config();
@@ -676,24 +679,19 @@ export async function sendWhatsappTemplate({
 /**
  * Format date to full readable string with day of week and ordinal suffix
  * Example: "Tuesday, 12th January 2026"
+ * Uses formatInTimeZone to ensure consistent formatting in IST regardless of server timezone.
  */
 export function formatDateForTemplate(date: Date): string {
-  // Get day of week
-  const dayOfWeek = date.toLocaleDateString("en-US", {
-    weekday: "long",
-    timeZone: "Asia/Kolkata",
-  });
+  // Get day of week in IST
+  const dayOfWeek = formatInTimeZone(date, BUSINESS_TIMEZONE, "EEEE");
 
   // Get day with ordinal suffix (1st, 2nd, 3rd, 4th, etc.)
-  const day = date.getDate();
+  const day = parseInt(formatInTimeZone(date, BUSINESS_TIMEZONE, "d"), 10);
   const ordinalSuffix = getOrdinalSuffix(day);
 
-  // Get month and year
-  const month = date.toLocaleDateString("en-US", {
-    month: "long",
-    timeZone: "Asia/Kolkata",
-  });
-  const year = date.getFullYear();
+  // Get month and year in IST
+  const month = formatInTimeZone(date, BUSINESS_TIMEZONE, "MMMM");
+  const year = formatInTimeZone(date, BUSINESS_TIMEZONE, "yyyy");
 
   // Format: "Tuesday, 12th January 2026"
   return `${dayOfWeek}, ${day}${ordinalSuffix} ${month} ${year}`;
@@ -720,24 +718,15 @@ function getOrdinalSuffix(day: number): string {
  * Format time to full readable string
  * Example: "10:00 AM - 10:40 AM"
  * If endDate is provided, formats as time range. Otherwise, just start time.
+ * Uses formatInTimeZone to ensure consistent formatting in IST regardless of server timezone.
  */
 export function formatTimeForTemplate(startDate: Date, endDate?: Date): string {
-  // Format start time with 2-digit minutes and AM/PM
-  const startTime = startDate.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "Asia/Kolkata",
-  });
+  // Format start time with 2-digit minutes and AM/PM in IST
+  const startTime = formatInTimeZone(startDate, BUSINESS_TIMEZONE, "hh:mm a");
 
   if (endDate) {
-    // Format end time with 2-digit minutes and AM/PM
-    const endTime = endDate.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "Asia/Kolkata",
-    });
+    // Format end time with 2-digit minutes and AM/PM in IST
+    const endTime = formatInTimeZone(endDate, BUSINESS_TIMEZONE, "hh:mm a");
     return `${startTime} - ${endTime}`;
   }
 
