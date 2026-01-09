@@ -37,15 +37,21 @@ export async function getSingleAdmin() {
 
 /**
  * Check if a date (YYYY-MM-DD) is a Sunday in IST timezone.
- * Uses fromZonedTime to properly interpret the date string as IST, then checks day of week.
+ * Uses formatInTimeZone to get the day of week in IST timezone.
+ * ISO day format: 1=Monday, 2=Tuesday, ..., 7=Sunday
  */
 export function isSunday(dateStr: string) {
   // Create date string at start of day in IST: "2025-11-23T00:00:00"
   const istDateTimeString = `${dateStr}T00:00:00`;
   // Convert IST time to UTC Date object
   const dateInIST = fromZonedTime(istDateTimeString, BUSINESS_TIMEZONE);
-  // Get day of week (0 = Sunday, 6 = Saturday) using date-fns getDay
-  return getDay(dateInIST) === 0;
+  // Get ISO day of week in IST timezone (1=Monday, 7=Sunday)
+  // We need to check in IST timezone, not UTC, because UTC date might be previous day
+  const isoDay = parseInt(
+    formatInTimeZone(dateInIST, BUSINESS_TIMEZONE, "i"),
+    10
+  );
+  return isoDay === 7; // 7 = Sunday in ISO format
 }
 
 /**
