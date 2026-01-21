@@ -763,58 +763,84 @@ export async function adminUpdateAppointmentStatus(
 }
 
 export async function getMyAppointments(req: Request, res: Response) {
+  const startTime = Date.now(); // For performance monitoring
   try {
     if (!req.user) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { includePending } = req.query; // Optional query param to include pending appointments
+    const { includePending, page = "1", limit = "20" } = req.query; // Optional query params
 
     // Build where clause
     const where: any = {
       userId: req.user.id,
       isArchived: false, // Exclude deleted appointments
+      isDeletedByAdmin: false, // Exclude appointments deleted by admin
     };
 
     if (includePending === "true") {
-      // Include both CONFIRMED and PENDING appointments
+      // Include CONFIRMED, PENDING, CANCELLED, and COMPLETED appointments
+      // This ensures all appointment statuses are visible to users
       where.status = {
-        in: ["CONFIRMED", "PENDING"],
+        in: ["CONFIRMED", "PENDING", "CANCELLED", "COMPLETED"],
       };
     } else {
-      // Only return CONFIRMED appointments for users (default behavior)
-      where.status = "CONFIRMED";
+      // Include CONFIRMED, CANCELLED, and COMPLETED appointments
+      // PENDING appointments are excluded by default, but CANCELLED and COMPLETED should always be visible
+      where.status = {
+        in: ["CONFIRMED", "CANCELLED", "COMPLETED"],
+      };
     }
 
-    const appointments = await prisma.appointment.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
+    // Pagination
+    const pageNum = Math.max(1, Number(page));
+    const lim = Math.min(200, Math.max(1, Number(limit)));
+    const skip = (pageNum - 1) * lim;
+
+    const [appointments, total] = await Promise.all([
+      prisma.appointment.findMany({
+        where,
+        skip,
+        take: lim,
+        orderBy: { createdAt: "desc" },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+            },
+          },
+          slot: {
+            select: {
+              id: true,
+              startAt: true,
+              endAt: true,
+              mode: true,
+            },
           },
         },
-        slot: {
-          select: {
-            id: true,
-            startAt: true,
-            endAt: true,
-            mode: true,
-          },
-        },
-      },
+      }),
+      prisma.appointment.count({ where }),
+    ]);
+
+    const durationMs = Date.now() - startTime;
+
+    // Log performance occasionally in development
+    if (process.env.NODE_ENV === "development" && Math.random() < 0.1) {
+      console.log(
+        `[USER APPOINTMENTS PERFORMANCE] Query took ${durationMs}ms. Total: ${total}, Page: ${pageNum}, Limit: ${lim}, includePending: ${includePending}`
+      );
+    }
+
+    return res.json({
+      success: true,
+      appointments,
+      total,
+      page: pageNum,
+      limit: lim,
     });
-
-    // console.log(
-    // `[USER APPOINTMENTS] Returning ${appointments.length} appointments for user ${req.user.id} (includePending: ${includePending})
-    // `
-    // );
-
-    return res.json({ success: true, appointments });
   } catch (err) {
     console.error("GET MY APPOINTMENTS ERROR:", err);
     return res.status(500).json({
@@ -826,12 +852,13 @@ export async function getMyAppointments(req: Request, res: Response) {
 
 // New endpoint: Get pending appointments specifically
 export async function getPendingAppointments(req: Request, res: Response) {
+  const startTime = Date.now(); // For performance monitoring
   try {
     if (!req.user) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { patientId } = req.query; // Optional patientId filter
+    const { patientId, page = "1", limit = "10" } = req.query; // Optional query params
 
     const where: any = {
       userId: req.user.id,
@@ -844,42 +871,55 @@ export async function getPendingAppointments(req: Request, res: Response) {
       where.patientId = patientId;
     }
 
-    const appointments = await prisma.appointment.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
+    // Pagination
+    const pageNum = Math.max(1, Number(page));
+    const lim = Math.min(200, Math.max(1, Number(limit)));
+    const skip = (pageNum - 1) * lim;
+
+    const [appointments, total] = await Promise.all([
+      prisma.appointment.findMany({
+        where,
+        skip,
+        take: lim,
+        orderBy: { createdAt: "desc" },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+            },
+          },
+          slot: {
+            select: {
+              id: true,
+              startAt: true,
+              endAt: true,
+              mode: true,
+            },
           },
         },
-        slot: {
-          select: {
-            id: true,
-            startAt: true,
-            endAt: true,
-            mode: true,
-          },
-        },
-      },
-    });
+      }),
+      prisma.appointment.count({ where }),
+    ]);
 
-    // console.log(
-    // `[PENDING APPOINTMENTS] Returning ${appointments.length} pending appointments for user ${req.user.id}`
-    // );
-    // Log each appointment's booking progress for debugging
-    appointments.forEach((apt: any) => {
-      // console.log(
-      // `[PENDING APPOINTMENTS] Appointment ${apt.id}: bookingProgress = ${
-      // apt.bookingProgress || "null"
-      // }, slotId = ${apt.slotId || "null"}`
-      // );
-    });
+    const durationMs = Date.now() - startTime;
 
-    return res.json({ success: true, appointments });
+    // Log performance occasionally in development
+    if (process.env.NODE_ENV === "development" && Math.random() < 0.1) {
+      console.log(
+        `[PENDING APPOINTMENTS PERFORMANCE] Query took ${durationMs}ms. Total: ${total}, Page: ${pageNum}, Limit: ${lim}`
+      );
+    }
+
+    return res.json({
+      success: true,
+      appointments,
+      total,
+      page: pageNum,
+      limit: lim,
+    });
   } catch (err) {
     console.error("GET PENDING APPOINTMENTS ERROR:", err);
     return res.status(500).json({
@@ -965,7 +1005,6 @@ export async function getUserAppointmentDetails(req: Request, res: Response) {
       include: {
         patient: {
           include: {
-            files: true,
             recalls: {
               include: {
                 entries: true,
@@ -976,6 +1015,15 @@ export async function getUserAppointmentDetails(req: Request, res: Response) {
         },
         slot: true,
       },
+    });
+
+    // Reports are scoped to the appointment (not patient) to prevent cross-appointment sharing.
+    // We fetch them explicitly to avoid relying on Prisma relation typings during build-time.
+    // NOTE: Prisma client types may not yet include `File.appointmentId` until prisma generate is run.
+    // We intentionally cast here so `tsc` remains green in environments that run `tsc` without `prisma generate`.
+    const appointmentFiles = await (prisma as any).file.findMany({
+      where: { appointmentId: id, isArchived: false },
+      orderBy: { createdAt: "asc" },
     });
 
     // Exclude archived appointments from user view
@@ -994,7 +1042,13 @@ export async function getUserAppointmentDetails(req: Request, res: Response) {
       });
     }
 
-    return res.json({ success: true, appointment });
+    return res.json({
+      success: true,
+      appointment: {
+        ...(appointment as any),
+        files: appointmentFiles,
+      },
+    });
   } catch (err) {
     console.error("GET USER APPOINTMENT DETAILS ERROR:", err);
     return res.status(500).json({

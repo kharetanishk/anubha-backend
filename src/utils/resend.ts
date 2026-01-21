@@ -15,10 +15,12 @@ const EMAIL_FROM = process.env.EMAIL_FROM || "noreply@resend.dev"; // Fallback t
 
 // Validate configuration
 if (!RESEND_API_KEY) {
-  // console.warn(
-  // "[RESEND] ⚠️ RESEND_API_KEY not configured in environment variables"
-  // );
-// console.warn("[RESEND] Email sending will fail if RESEND_API_KEY is not set");
+  console.warn(
+    "[RESEND] ⚠️ RESEND_API_KEY not configured in environment variables"
+  );
+  console.warn("[RESEND] Email sending will fail if RESEND_API_KEY is not set");
+} else {
+  console.log("[RESEND] ✅ Resend API key configured");
 }
 
 // Create Resend client instance
@@ -33,8 +35,7 @@ export function getFromEmail(): string {
     // console.warn(
     // "[RESEND] ⚠️ EMAIL_FROM not configured, using default noreply@resend.dev"
     // );
-return "noreply@resend.dev";
+    return "noreply@resend.dev";
   }
   return EMAIL_FROM;
 }
-

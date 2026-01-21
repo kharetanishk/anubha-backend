@@ -13,9 +13,16 @@ export async function attachUser(
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.substring(7);
+      console.log("[AUTH] Token found in Authorization header");
     } else {
       // Fallback to cookie
       token = req.cookies.auth_token;
+      console.log("[AUTH] Checking cookies:", {
+        hasCookies: !!req.cookies,
+        cookieKeys: req.cookies ? Object.keys(req.cookies) : [],
+        hasAuthToken: !!req.cookies?.auth_token,
+        path: req.path,
+      });
     }
 
     if (!token) {
@@ -25,31 +32,42 @@ export async function attachUser(
         !req.path.includes("/api/health") &&
         req.method !== "OPTIONS"
       ) {
-        // console.warn("[AUTH] Cookie missing:", {
-        // path: req.path,
-        // method: req.method,
-        // timestamp: new Date()
-        // .toISOString(),
-        // });
+        console.warn("[AUTH] No token found:", {
+          path: req.path,
+          method: req.method,
+          hasAuthHeader: !!authHeader,
+          hasCookies: !!req.cookies,
+          cookieKeys: req.cookies ? Object.keys(req.cookies) : [],
+          timestamp: new Date().toISOString(),
+        });
       }
       return next();
     }
+
+    console.log("[AUTH] Token found, verifying...", {
+      tokenLength: token.length,
+      tokenPreview: token.substring(0, 20) + "...",
+    });
 
     const decoded = verifyToken(token);
 
     if (decoded) {
       req.user = { id: decoded.id, role: decoded.role };
+      console.log("[AUTH] Token verified successfully:", {
+        userId: decoded.id,
+        role: decoded.role,
+        path: req.path,
+      });
     } else {
       // Log failed token verification for monitoring
-      // console.warn("[AUTH] Token verification failed:", {
-      // hasToken: !!token,
-      // tokenLength: token.length,
-      // tokenPreview: token.substring(0, 20)
-      // + "...",
-      // timestamp: new Date().toISOString(),
-      // path: req.path,
-      // method: req.method,
-      // });
+      console.warn("[AUTH] Token verification failed:", {
+        hasToken: !!token,
+        tokenLength: token.length,
+        tokenPreview: token.substring(0, 20) + "...",
+        timestamp: new Date().toISOString(),
+        path: req.path,
+        method: req.method,
+      });
     }
 
     return next();

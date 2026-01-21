@@ -404,14 +404,15 @@ export async function sendWhatsAppMessage(
       // );
     }
 
-    // console.log("==========================================");
-    // console.log("[WHATSAPP API] ✅ Message sent successfully");
-    // console.log("  To:", formattedPhone);
-    // console.log("  Template:", templateName);
-    // console.log("  Response Status:", response.status);
-    // console.log("  Response Data:", JSON.stringify(response.data, null, 2)
-    // );
-    // console.log("==========================================");
+    if (IS_DEVELOPMENT) {
+      console.log("==========================================");
+      console.log("[WHATSAPP API] ✅ Message sent successfully");
+      console.log("  To:", formattedPhone);
+      console.log("  Template:", templateName);
+      console.log("  Response Status:", response.status);
+      console.log("  Response Data:", JSON.stringify(response.data, null, 2));
+      console.log("==========================================");
+    }
     return {
       success: true,
       message: "WhatsApp message sent successfully",
@@ -549,8 +550,9 @@ export async function sendPatientConfirmationMessage(
 }
 
 /**
- * Send admin notification WhatsApp message using doctor_confirmation template
- * Always sends to fixed admin phone number: 919713885582
+ * Send doctor notification WhatsApp message using doctor_confirmation template
+ * Always sends to fixed doctor/admin phone number: 919713885582
+ * (Single doctor application - doctor and admin are the same)
  * Template variables:
  * - header_1: Plan name
  * - body_1: Patient name (from patient details)
@@ -562,7 +564,7 @@ export async function sendDoctorNotificationMessage(
   patientName: string,
   appointmentDate: string,
   slotTime: string,
-  doctorPhone?: string // Optional - kept for backward compatibility, but always uses ADMIN_PHONE_NUMBER
+  doctorPhone?: string // Ignored - always uses fixed ADMIN_PHONE_NUMBER (919713885582) for single doctor app
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   // Build template variables for doctor_confirmation template
   const templateVariables: WhatsAppTemplateVariables = {
@@ -584,7 +586,8 @@ export async function sendDoctorNotificationMessage(
     },
   };
 
-  // Always use the fixed admin phone number
+  // Always use fixed doctor/admin phone number (single doctor application)
+  // doctorPhone parameter is ignored to ensure consistency
   return sendWhatsAppMessage(
     ADMIN_PHONE_NUMBER,
     "doctor_confirmation",

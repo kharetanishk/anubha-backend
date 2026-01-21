@@ -8,13 +8,18 @@ import {
   formatDateForTemplate,
   formatTimeForTemplate,
 } from "../../services/whatsapp.service";
-import { getSingleAdmin } from "../slots/slots.services";
+import { sendAppointmentConfirmationNotifications } from "../../services/notification/appointment-notification.service";
+import { generateSignedUrl, deleteFromCloudinary } from "../../util/cloudinary";
 import {
-  uploadPDFToCloudinary,
-  generateSignedUrl,
-  deleteFromCloudinary,
-} from "../../util/cloudinary";
+  uploadDoctorNoteFile,
+  uploadPrePostImage,
+  generateSignedDownloadUrl,
+  type PrePostType,
+} from "../../services/storage/r2.service";
+import { downloadFile } from "../../services/storage/r2.service";
+import { sendDoctorNotesEmail } from "../../services/email/doctor-notes-email.service";
 import { fromZonedTime } from "date-fns-tz";
+import { AppError } from "../../util/AppError";
 
 const BUSINESS_TIMEZONE = "Asia/Kolkata";
 
@@ -32,6 +37,28 @@ function dateRangeFromQuery(dateStr?: string) {
 
 /**
  * Get appointments for admin panel
+ *
+ * Filters:
+ * - date (single date or range)
+ * - status (PENDING, CONFIRMED, CANCELLED, COMPLETED)
+ * - mode (IN_PERSON, ONLINE)
+ * - q (search by patient name, phone, or email)
+ *
+ * PERFORMANCE NOTES:
+ * - Query is optimized by a composite index on:
+ *   (isArchived, isDeletedByAdmin, status, mode, startAt)
+ *   which matches the WHERE + ORDER BY pattern used here.
+ *
+ * FUTURE IMPROVEMENTS (NOT IMPLEMENTED YET):
+ * - Switch to cursor-based pagination for very large datasets (> 10k rows)
+ *   API shape example:
+ *     GET /api/admin/appointments?cursor=<appointmentId>&take=50
+ *   Response:
+ *     { appointments: [...], nextCursor: string | null, hasMore: boolean }
+ * - Frontend would then use a `nextCursor` pattern (infinite scroll or paged).
+ * - Consider virtual scrolling (react-window / react-virtualized) and
+ *   infinite scroll ("Load more" with IntersectionObserver) for very large pages.
+ *
  * Shows ALL appointments (PENDING, CONFIRMED, CANCELLED, COMPLETED) by default
  * Can be filtered by status, date, mode, or search query
  */
@@ -66,6 +93,8 @@ export async function adminGetAppointments(req: Request, res: Response) {
     where.isArchived = false;
     where.isDeletedByAdmin = false; // Admin-only soft delete: hide from admin view
 
+    const startTime = Date.now();
+
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
@@ -95,6 +124,27 @@ export async function adminGetAppointments(req: Request, res: Response) {
       }),
       prisma.appointment.count({ where }),
     ]);
+
+    const durationMs = Date.now() - startTime;
+
+    // Lightweight performance logging for debugging (non-production only)
+    if (process.env.NODE_ENV !== "production") {
+      // To avoid noisy logs in long-running processes, only log occasionally
+      if (Math.random() < 0.1) {
+        console.log("[ADMIN APPOINTMENTS] Query performance:", {
+          total,
+          page: pageNum,
+          limit: lim,
+          filters: {
+            date,
+            status,
+            mode,
+            q,
+          },
+          durationMs,
+        });
+      }
+    }
 
     return res.json({
       success: true,
@@ -395,6 +445,7 @@ export async function adminUpdateAppointmentStatus(
       const appointmentWithDetails = await prisma.appointment.findUnique({
         where: { id },
         include: {
+          slot: true,
           patient: {
             select: {
               id: true,
@@ -421,6 +472,32 @@ export async function adminUpdateAppointmentStatus(
         ).catch((error: any) => {
           console.error(
             "[ADMIN] WhatsApp notification failed (non-blocking):",
+            error.message
+          );
+        });
+        
+        // Send email notifications (new)
+        sendAppointmentConfirmationNotifications({
+          appointment: {
+            id: appointmentWithDetails.id,
+            planName: appointmentWithDetails.planName,
+            patient: {
+              name: appointmentWithDetails.patient?.name,
+              phone: appointmentWithDetails.patient?.phone,
+              email: appointmentWithDetails.patient?.email,
+            },
+            slot: appointmentWithDetails.slot
+              ? {
+                  startAt: appointmentWithDetails.slot.startAt,
+                  endAt: appointmentWithDetails.slot.endAt,
+                }
+              : undefined,
+            startAt: appointmentWithDetails.startAt,
+            endAt: appointmentWithDetails.endAt,
+          },
+        }).catch((error: any) => {
+          console.error(
+            "[ADMIN] Email notification failed (non-blocking):",
             error.message
           );
         });
@@ -792,6 +869,14 @@ export async function saveDoctorSession(req: Request, res: Response) {
  * PATCH /api/admin/doctor-notes/:appointmentId (partial update)
  */
 export async function saveDoctorNotes(req: Request, res: Response) {
+  console.log("==========================================");
+  console.log("Doctor Notes upload endpoint hit");
+  console.log(`Method: ${req.method}`);
+  console.log(`Path: ${req.path}`);
+  console.log(`Original URL: ${req.originalUrl}`);
+  console.log(`Has Files: ${!!req.files}`);
+  console.log(`Files Object:`, req.files ? Object.keys(req.files) : "none");
+  console.log("==========================================");
   const isPatch = req.method === "PATCH";
   const startTime = Date.now();
 
@@ -825,8 +910,47 @@ export async function saveDoctorNotes(req: Request, res: Response) {
     }
 
     // Check if request is multipart/form-data (has files)
-    const files = (req.files as Express.Multer.File[]) || [];
-    const hasFiles = files.length > 0;
+    // Handle both array-style files (PDFs) and fields-style files (images and reports)
+    let files: Express.Multer.File[] = [];
+    let preImages: Express.Multer.File[] = [];
+    let postImages: Express.Multer.File[] = [];
+    let medicalReports: Express.Multer.File[] = [];
+
+    if (req.files) {
+      if (Array.isArray(req.files)) {
+        // Array format (PDFs from dietCharts field)
+        files = req.files as Express.Multer.File[];
+      } else if (req.files && typeof req.files === "object") {
+        // Fields format (multiple field names)
+        const filesObj = req.files as {
+          [fieldname: string]: Express.Multer.File[];
+        };
+        if (filesObj.dietCharts) {
+          files = Array.isArray(filesObj.dietCharts) ? filesObj.dietCharts : [];
+        }
+        if (filesObj.preConsultationImages) {
+          preImages = Array.isArray(filesObj.preConsultationImages)
+            ? filesObj.preConsultationImages
+            : [filesObj.preConsultationImages];
+        }
+        if (filesObj.postConsultationImages) {
+          postImages = Array.isArray(filesObj.postConsultationImages)
+            ? filesObj.postConsultationImages
+            : [filesObj.postConsultationImages];
+        }
+        if (filesObj.medicalReports) {
+          medicalReports = Array.isArray(filesObj.medicalReports)
+            ? filesObj.medicalReports
+            : [filesObj.medicalReports];
+        }
+      }
+    }
+
+    const hasFiles =
+      files.length > 0 ||
+      preImages.length > 0 ||
+      postImages.length > 0 ||
+      medicalReports.length > 0;
 
     if (hasFiles || (req as any).body?.formData) {
       // Multipart form data
@@ -862,16 +986,45 @@ export async function saveDoctorNotes(req: Request, res: Response) {
 
       // Handle multiple file uploads (dietChart PDFs)
       if (hasFiles) {
+        // Validate appointmentId is present before uploading files
+        if (!appointmentId) {
+          return res.status(400).json({
+            success: false,
+            error: "Appointment ID is required before uploading files",
+          });
+        }
+
         // console.log(`[BACKEND] Processing ${files.length} file upload(s)
         // `);
 
         const uploadedFiles: Array<{
           fileName: string;
-          fileUrl: string;
-          publicId: string;
+          filePath: string; // R2 object key
           mimeType: string;
           sizeInBytes: number;
         }> = [];
+
+        // Get R2 bucket name from environment variable
+        const r2Bucket = process.env.R2_BUCKET;
+        if (!r2Bucket) {
+          console.error("[BACKEND] R2_BUCKET environment variable is not set");
+          return res.status(500).json({
+            success: false,
+            error: "Storage configuration error. Please contact support.",
+          });
+        }
+
+        console.log("[BACKEND] File upload summary:", {
+          dietCharts: files.length,
+          preImages: preImages.length,
+          postImages: postImages.length,
+          medicalReports: medicalReports.length,
+          totalFiles:
+            files.length +
+            preImages.length +
+            postImages.length +
+            medicalReports.length,
+        });
 
         // Process each file
         for (let i = 0; i < files.length; i++) {
@@ -882,43 +1035,31 @@ export async function saveDoctorNotes(req: Request, res: Response) {
           // size: file.size,
           // });
           try {
-            // Upload file to Cloudinary
-            const base64 = `data:${file.mimetype};base64,${file.buffer.toString(
-              "base64"
-            )}`;
+            // Extract file extension from original filename
+            const fileExtension =
+              file.originalname.split(".").pop()?.toLowerCase() || "pdf";
 
-            // Generate unique public_id
-            const timestamp = Date.now();
-            const randomStr = Math.random().toString(36).substring(2, 15);
-            const uniqueId = `nutriwell_diet_chart_${timestamp}_${randomStr}_${i}`;
-
-            // Upload to Cloudinary using utility function
-            const cloudinaryResult = await uploadPDFToCloudinary(base64, {
-              folder: "nutriwell_diet_charts",
-              publicId: uniqueId,
-              context: {
-                uploaded_at: new Date().toISOString(),
-                uploaded_by: adminId,
+            // Upload to R2 using structured key format: doctor-notes/{type}/{appointmentId}/{uuid}.{ext}
+            // Type is "pdf" for diet chart PDFs
+            const uploadResult = await uploadDoctorNoteFile({
+              bucket: r2Bucket,
+              type: "pdf", // Diet chart PDFs are type "pdf"
+              appointmentId: appointmentId,
+              body: file.buffer, // Use file buffer directly
+              extension: fileExtension,
+              contentType: file.mimetype,
+              metadata: {
                 original_filename: file.originalname,
-                appointment_id: appointmentId || "unknown",
+                uploaded_by: adminId,
+                uploaded_at: new Date().toISOString(),
                 file_index: i.toString(),
               },
             });
 
-            // console.log(`[BACKEND] File ${i + 1} uploaded to Cloudinary:`, {
-            // publicId: cloudinaryResult.public_id,
-            // url: cloudinaryResult.secure_url,
-            // resourceType: cloudinaryResult.resource_type,
-            // });
-            // Use Cloudinary's secure_url directly - it includes proper Content-Type headers
-            // No need for signed URLs when using resource_type: "auto"
-            const fileUrl = cloudinaryResult.secure_url;
-
-            // Store file info
+            // Store file info (only key, no URL)
             uploadedFiles.push({
               fileName: file.originalname,
-              fileUrl: fileUrl,
-              publicId: cloudinaryResult.public_id,
+              filePath: uploadResult.key, // R2 object key (e.g., "doctor-notes/pdf/appt-123/uuid.pdf")
               mimeType: file.mimetype,
               sizeInBytes: file.size,
             });
@@ -931,15 +1072,195 @@ export async function saveDoctorNotes(req: Request, res: Response) {
                 file.originalname;
               parsedFormData.dietPrescribed.dietChartFileSize = file.size;
               parsedFormData.dietPrescribed.dietChartMimeType = file.mimetype;
-              parsedFormData.dietPrescribed.dietChartUrl = fileUrl;
+              // Store R2 key instead of URL
               parsedFormData.dietPrescribed.dietChartPublicId =
-                cloudinaryResult.public_id;
+                uploadResult.key;
             }
           } catch (uploadError: any) {
             console.error(`[BACKEND] File ${i + 1} upload error:`, uploadError);
             return res.status(500).json({
               success: false,
               error: `Failed to upload file "${file.originalname}": ${
+                uploadError.message || "Unknown error"
+              }`,
+            });
+          }
+        }
+
+        // Process pre-consultation images
+        console.log(
+          `[BACKEND] Processing ${preImages.length} pre-consultation image(s)`
+        );
+        for (let i = 0; i < preImages.length; i++) {
+          const file = preImages[i];
+          console.log(
+            `[BACKEND] Uploading pre-image ${i + 1}/${preImages.length}: ${
+              file.originalname
+            }`
+          );
+          try {
+            const fileExtension =
+              file.originalname.split(".").pop()?.toLowerCase() || "jpg";
+
+            // Validate image extension
+            const allowedExtensions = ["jpg", "jpeg", "png"];
+            if (!allowedExtensions.includes(fileExtension)) {
+              return res.status(400).json({
+                success: false,
+                error: `Invalid file type for pre-consultation image: ${fileExtension}. Only JPG, JPEG, and PNG are allowed.`,
+              });
+            }
+
+            const uploadResult = await uploadPrePostImage({
+              bucket: r2Bucket,
+              prePostType: "pre",
+              appointmentId: appointmentId,
+              body: file.buffer,
+              extension: fileExtension,
+              contentType: file.mimetype,
+              metadata: {
+                original_filename: file.originalname,
+                uploaded_by: adminId,
+                uploaded_at: new Date().toISOString(),
+                file_index: i.toString(),
+              },
+            });
+
+            uploadedFiles.push({
+              fileName: file.originalname,
+              filePath: uploadResult.key,
+              mimeType: file.mimetype,
+              sizeInBytes: file.size,
+            });
+            console.log(
+              `[BACKEND] Successfully uploaded pre-image ${i + 1}: ${
+                uploadResult.key
+              }`
+            );
+          } catch (uploadError: any) {
+            console.error(
+              `[BACKEND] Pre-image ${i + 1} upload error:`,
+              uploadError
+            );
+            return res.status(500).json({
+              success: false,
+              error: `Failed to upload pre-consultation image "${
+                file.originalname
+              }": ${uploadError.message || "Unknown error"}`,
+            });
+          }
+        }
+
+        // Process post-consultation images
+        console.log(
+          `[BACKEND] Processing ${postImages.length} post-consultation image(s)`
+        );
+        for (let i = 0; i < postImages.length; i++) {
+          const file = postImages[i];
+          console.log(
+            `[BACKEND] Uploading post-image ${i + 1}/${postImages.length}: ${
+              file.originalname
+            }`
+          );
+          try {
+            const fileExtension =
+              file.originalname.split(".").pop()?.toLowerCase() || "jpg";
+
+            // Validate image extension
+            const allowedExtensions = ["jpg", "jpeg", "png"];
+            if (!allowedExtensions.includes(fileExtension)) {
+              return res.status(400).json({
+                success: false,
+                error: `Invalid file type for post-consultation image: ${fileExtension}. Only JPG, JPEG, and PNG are allowed.`,
+              });
+            }
+
+            const uploadResult = await uploadPrePostImage({
+              bucket: r2Bucket,
+              prePostType: "post",
+              appointmentId: appointmentId,
+              body: file.buffer,
+              extension: fileExtension,
+              contentType: file.mimetype,
+              metadata: {
+                original_filename: file.originalname,
+                uploaded_by: adminId,
+                uploaded_at: new Date().toISOString(),
+                file_index: i.toString(),
+              },
+            });
+
+            uploadedFiles.push({
+              fileName: file.originalname,
+              filePath: uploadResult.key,
+              mimeType: file.mimetype,
+              sizeInBytes: file.size,
+            });
+            console.log(
+              `[BACKEND] Successfully uploaded post-image ${i + 1}: ${
+                uploadResult.key
+              }`
+            );
+          } catch (uploadError: any) {
+            console.error(
+              `[BACKEND] Post-image ${i + 1} upload error:`,
+              uploadError
+            );
+            return res.status(500).json({
+              success: false,
+              error: `Failed to upload post-consultation image "${
+                file.originalname
+              }": ${uploadError.message || "Unknown error"}`,
+            });
+          }
+        }
+
+        // Process medical reports (PDFs, PNG, JPG, JPEG)
+        for (let i = 0; i < medicalReports.length; i++) {
+          const file = medicalReports[i];
+          try {
+            const fileExtension =
+              file.originalname.split(".").pop()?.toLowerCase() || "pdf";
+
+            // Validate file extension
+            const allowedExtensions = ["pdf", "png", "jpg", "jpeg"];
+            if (!allowedExtensions.includes(fileExtension)) {
+              return res.status(400).json({
+                success: false,
+                error: `Invalid file type for medical report: ${fileExtension}. Only PDF, PNG, JPG, and JPEG are allowed.`,
+              });
+            }
+
+            // Upload to R2 using structured key format: doctor-notes/reports/{appointmentId}/{uuid}.{ext}
+            const uploadResult = await uploadDoctorNoteFile({
+              bucket: r2Bucket,
+              type: "reports", // Medical reports are type "reports"
+              appointmentId: appointmentId,
+              body: file.buffer,
+              extension: fileExtension,
+              contentType: file.mimetype,
+              metadata: {
+                original_filename: file.originalname,
+                uploaded_by: adminId,
+                uploaded_at: new Date().toISOString(),
+                file_index: i.toString(),
+              },
+            });
+
+            uploadedFiles.push({
+              fileName: file.originalname,
+              filePath: uploadResult.key,
+              mimeType: file.mimetype,
+              sizeInBytes: file.size,
+            });
+          } catch (uploadError: any) {
+            console.error(
+              `[BACKEND] Medical report ${i + 1} upload error:`,
+              uploadError
+            );
+            return res.status(500).json({
+              success: false,
+              error: `Failed to upload medical report "${file.originalname}": ${
                 uploadError.message || "Unknown error"
               }`,
             });
@@ -1070,24 +1391,46 @@ export async function saveDoctorNotes(req: Request, res: Response) {
 
       // Create attachments for each uploaded file
       for (const uploadedFile of uploadedFiles) {
-        // Check if attachment with same publicId already exists
+        // Check if attachment with same filePath (R2 key) already exists
         const existingAttachment = await prisma.doctorNoteAttachment.findFirst({
           where: {
             doctorNotesId: doctorNotes.id,
-            filePath: uploadedFile.publicId, // Match by Cloudinary public_id
+            filePath: uploadedFile.filePath, // Match by R2 object key
             isArchived: false,
           },
         });
 
         if (existingAttachment) {
+          // Determine file category and section based on filePath pattern
+          let fileCategory: string = "DIET_CHART";
+          let section: string | null = "DietPrescribed";
+
+          // Check if this is a medical report
+          if (uploadedFile.filePath.includes("/reports/")) {
+            fileCategory = "LAB_REPORT";
+            section = "HealthProfile";
+          } else if (uploadedFile.filePath.includes("/pre-post/pre/")) {
+            fileCategory = "IMAGE";
+            section = "PrePostConsultation";
+          } else if (uploadedFile.filePath.includes("/pre-post/post/")) {
+            fileCategory = "IMAGE";
+            section = "PrePostConsultation";
+          } else if (uploadedFile.filePath.includes("/pdf/")) {
+            fileCategory = "DIET_CHART";
+            section = "DietPrescribed";
+          }
+
           // Update existing attachment
           await prisma.doctorNoteAttachment.update({
             where: { id: existingAttachment.id },
             data: {
               fileName: uploadedFile.fileName,
-              fileUrl: uploadedFile.fileUrl,
+              fileUrl: null, // No public URLs for R2 files
               mimeType: uploadedFile.mimeType,
               sizeInBytes: uploadedFile.sizeInBytes,
+              provider: "S3", // Ensure provider is set to S3 for R2 files
+              fileCategory: fileCategory as any,
+              section,
               updatedAt: new Date(),
             },
           });
@@ -1095,20 +1438,52 @@ export async function saveDoctorNotes(req: Request, res: Response) {
           // `[BACKEND] Updated existing attachment: ${uploadedFile.fileName}`
           // );
         } else {
+          // Determine file category and section based on filePath pattern
+          let fileCategory: string = "DIET_CHART";
+          let section: string | null = "DietPrescribed";
+
+          // Check if this is a medical report
+          if (uploadedFile.filePath.includes("/reports/")) {
+            fileCategory = "LAB_REPORT"; // Use LAB_REPORT category for medical reports
+            section = "HealthProfile";
+          } else if (uploadedFile.filePath.includes("/pre-post/pre/")) {
+            fileCategory = "IMAGE";
+            section = "PrePostConsultation";
+          } else if (uploadedFile.filePath.includes("/pre-post/post/")) {
+            fileCategory = "IMAGE";
+            section = "PrePostConsultation";
+          } else if (uploadedFile.filePath.includes("/pdf/")) {
+            // PDF files (diet charts)
+            fileCategory = "DIET_CHART";
+            section = "DietPrescribed";
+          }
+
           // Create new attachment
-          await prisma.doctorNoteAttachment.create({
+          const newAttachment = await prisma.doctorNoteAttachment.create({
             data: {
               doctorNotesId: doctorNotes.id,
               fileName: uploadedFile.fileName,
-              filePath: uploadedFile.publicId, // Store Cloudinary public_id as filePath
-              fileUrl: uploadedFile.fileUrl,
+              filePath: uploadedFile.filePath, // Store R2 object key
+              fileUrl: null, // No public URLs for R2 files (use signed URLs on-demand)
               mimeType: uploadedFile.mimeType,
               sizeInBytes: uploadedFile.sizeInBytes,
-              provider: "CLOUDINARY",
-              fileCategory: "DIET_CHART",
-              section: "DietPrescribed",
+              provider: "S3", // R2 uses S3-compatible API
+              fileCategory: fileCategory as any,
+              section,
             },
           });
+          
+          // Debug logging for medical reports
+          if (uploadedFile.filePath.includes("/reports/")) {
+            console.log("[BACKEND] Medical report attachment created:", {
+              id: newAttachment.id,
+              fileName: newAttachment.fileName,
+              filePath: newAttachment.filePath,
+              fileCategory: newAttachment.fileCategory,
+              section: newAttachment.section,
+              provider: newAttachment.provider,
+            });
+          }
           // console.log(
           //   `[BACKEND] Created new attachment: ${uploadedFile.fileName}`
           // );
@@ -1228,12 +1603,13 @@ function isObject(item: any): boolean {
  */
 async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
   try {
-    // console.log("==========================================");
-    // console.log("[ADMIN WHATSAPP] Sending confirmation notifications...");
-    // console.log("  Appointment ID:", appointment.id);
-    // console.log("  Appointment Status: CONFIRMED (by admin)
-    // ");
-    // console.log("==========================================");
+    if (process.env.NODE_ENV === "development") {
+      console.log("==========================================");
+      console.log("[ADMIN WHATSAPP] Sending confirmation notifications...");
+      console.log("  Appointment ID:", appointment.id);
+      console.log("  Appointment Status: CONFIRMED (by admin)");
+      console.log("==========================================");
+    }
     // Get patient phone number
     const patientPhone = appointment.patient?.phone;
     const patientName = appointment.patient?.name || "Patient";
@@ -1249,13 +1625,16 @@ async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
       const patientResult = await sendPatientConfirmationMessage(patientPhone);
 
       if (patientResult.success) {
-        // console.log("==========================================");
-        // console.log(
-        // "[ADMIN WHATSAPP] ✅ Patient notification sent successfully"
-        // );
-        // console.log("  Patient Phone:", patientPhone);
-        // console.log("  Patient Name:", patientName);
-        // console.log("==========================================");
+        if (process.env.NODE_ENV === "development") {
+          console.log("==========================================");
+          console.log(
+            "[ADMIN WHATSAPP] ✅ Patient notification sent successfully"
+          );
+          console.log("  Patient Phone:", patientPhone);
+          console.log("  Patient Name:", patientName);
+          console.log("  Template: patient");
+          console.log("==========================================");
+        }
       } else {
         console.error("==========================================");
         console.error("[ADMIN WHATSAPP] ❌ Patient notification failed");
@@ -1265,11 +1644,8 @@ async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
       }
     }
 
-    // Get doctor phone number
-    const doctorPhone = appointment.doctor?.phone;
-    const doctorName = appointment.doctor?.name || "Doctor";
-
     // Prepare data for doctor notification
+    // Always sends to fixed doctor/admin number: 919713885582 (single doctor application)
     const planName = appointment.planName || "Consultation Plan";
     const slotStartTime = appointment.slot?.startAt || appointment.startAt;
     const slotEndTime = appointment.slot?.endAt || appointment.endAt;
@@ -1278,75 +1654,34 @@ async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
     const appointmentDate = formatDateForTemplate(slotStartTime);
     const slotTimeFormatted = formatTimeForTemplate(slotStartTime, slotEndTime);
 
-    if (!doctorPhone) {
-      // console.log(
-      // "[ADMIN WHATSAPP] Doctor phone not found in appointment, trying admin fallback..."
-      // );
-      try {
-        const admin = await getSingleAdmin();
-        const adminPhone = admin.phone;
-        const adminName = admin.name || "Admin";
-
-        if (adminPhone) {
-          // console.log(
-          // "[ADMIN WHATSAPP] Sending doctor notification (using admin phone)
-          // ..."
-          // );
-          const doctorResult = await sendDoctorNotificationMessage(
-            planName,
-            patientName,
-            appointmentDate,
-            slotTimeFormatted
-          );
-          if (doctorResult.success) {
-            // console.log("==========================================");
-            // console.log(
-            // "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
-            // );
-            // console.log("  Admin Phone:", adminPhone);
-            // console.log("  Template: doctor_confirmation");
-            // console.log("==========================================");
-          } else {
-            console.error("==========================================");
-            console.error("[ADMIN WHATSAPP] ❌ Doctor notification failed");
-            console.error("  Admin Phone:", adminPhone);
-            console.error("  Error:", doctorResult.error);
-            console.error("==========================================");
-          }
-        } else {
-          // console.warn(
-          // "[ADMIN WHATSAPP] ⚠️ Admin phone not found, skipping doctor notification"
-          // );
-        }
-      } catch (adminError: any) {
-        console.error(
-          "[ADMIN WHATSAPP] ❌ Failed to get admin phone:",
-          adminError.message
+    // Send doctor notification (always uses fixed admin/doctor number: 919713885582)
+    const doctorResult = await sendDoctorNotificationMessage(
+      planName,
+      patientName,
+      appointmentDate,
+      slotTimeFormatted
+      // doctorPhone parameter is ignored - always uses fixed admin/doctor number (919713885582)
+    );
+    if (doctorResult.success) {
+      if (process.env.NODE_ENV === "development") {
+        console.log("==========================================");
+        console.log(
+          "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
         );
+        console.log("  Doctor/Admin Phone: 919713885582 (fixed)");
+        console.log("  Template: doctor_confirmation");
+        console.log("  Plan Name:", planName);
+        console.log("  Patient Name:", patientName);
+        console.log("  Appointment Date:", appointmentDate);
+        console.log("  Slot Time:", slotTimeFormatted);
+        console.log("==========================================");
       }
     } else {
-      // console.log("[ADMIN WHATSAPP] Sending doctor notification...");
-      const doctorResult = await sendDoctorNotificationMessage(
-        planName,
-        patientName,
-        appointmentDate,
-        slotTimeFormatted
-      );
-      if (doctorResult.success) {
-        // console.log("==========================================");
-        // console.log(
-        // "[ADMIN WHATSAPP] ✅ Doctor notification sent successfully"
-        // );
-        // console.log("  Doctor Phone:", doctorPhone);
-        // console.log("  Template: doctor_confirmation");
-        // console.log("==========================================");
-      } else {
-        console.error("==========================================");
-        console.error("[ADMIN WHATSAPP] ❌ Doctor notification failed");
-        console.error("  Doctor Phone:", doctorPhone);
-        console.error("  Error:", doctorResult.error);
-        console.error("==========================================");
-      }
+      console.error("==========================================");
+      console.error("[ADMIN WHATSAPP] ❌ Doctor notification failed");
+      console.error("  Doctor/Admin Phone: 919713885582 (fixed)");
+      console.error("  Error:", doctorResult.error);
+      console.error("==========================================");
     }
 
     // console.log("[ADMIN WHATSAPP] ✅ Notification process completed");
@@ -1477,24 +1812,33 @@ export async function getDoctorNotes(req: Request, res: Response) {
         createdAt: doctorNotes.createdAt.toISOString(),
         updatedAt: doctorNotes.updatedAt.toISOString(),
         attachments: doctorNotes.attachments.map((att) => {
-          // Regenerate signed URL with correct resource type
-          let resourceType: "image" | "raw" | "video" | "auto" = "image";
-          if (att.mimeType === "application/pdf") {
-            resourceType = "raw";
-          } else if (att.mimeType?.startsWith("video/")) {
-            resourceType = "video";
-          } else if (att.mimeType?.startsWith("image/")) {
-            resourceType = "image";
-          } else if (att.mimeType && !att.mimeType.startsWith("image/")) {
-            // For other file types, use raw
-            resourceType = "raw";
-          }
+          // Handle R2 (S3) stored files differently from Cloudinary
+          // R2 files: provider = S3, filePath = R2 object key, fileUrl = null
+          // Cloudinary files: provider = CLOUDINARY, filePath = public_id, fileUrl = signed URL
 
-          // Regenerate signed URL if publicId exists
-          let fileUrl = att.fileUrl;
-          if (att.filePath) {
-            // filePath stores the Cloudinary public_id
+          let fileUrl = att.fileUrl || null;
+
+          if (att.provider === "S3") {
+            // R2-stored files: Do NOT generate URLs here
+            // Frontend will call getDoctorNoteAttachmentViewUrl() to get signed URLs on demand
+            // Keep fileUrl as null - the frontend will fetch signed URLs when needed
+            fileUrl = null;
+          } else if (att.provider === "CLOUDINARY" && att.filePath) {
+            // Cloudinary files: Generate signed URL from public_id (filePath)
+            let resourceType: "image" | "raw" | "video" | "auto" = "image";
+            if (att.mimeType === "application/pdf") {
+              resourceType = "raw";
+            } else if (att.mimeType?.startsWith("video/")) {
+              resourceType = "video";
+            } else if (att.mimeType?.startsWith("image/")) {
+              resourceType = "image";
+            } else if (att.mimeType && !att.mimeType.startsWith("image/")) {
+              // For other file types, use raw
+              resourceType = "raw";
+            }
+
             try {
+              // filePath stores the Cloudinary public_id for Cloudinary files
               fileUrl = generateSignedUrl(
                 att.filePath,
                 365 * 24 * 60 * 60,
@@ -1502,7 +1846,7 @@ export async function getDoctorNotes(req: Request, res: Response) {
               );
             } catch (error: any) {
               console.error(
-                `[BACKEND] Failed to regenerate URL for attachment ${att.id}:`,
+                `[BACKEND] Failed to regenerate Cloudinary URL for attachment ${att.id}:`,
                 error.message
               );
               // Keep original URL if regeneration fails
@@ -1512,11 +1856,13 @@ export async function getDoctorNotes(req: Request, res: Response) {
           return {
             id: att.id,
             fileName: att.fileName,
-            fileUrl: fileUrl,
+            filePath: att.filePath, // Always include filePath (R2 key or Cloudinary public_id)
+            fileUrl: fileUrl, // null for R2 files, signed URL for Cloudinary
             mimeType: att.mimeType,
             sizeInBytes: att.sizeInBytes,
             fileCategory: att.fileCategory,
             section: att.section,
+            provider: att.provider, // Include provider so frontend knows how to handle
             createdAt: att.createdAt.toISOString(),
           };
         }),
@@ -1531,6 +1877,543 @@ export async function getDoctorNotes(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: "Something went wrong",
+    });
+  }
+}
+
+/**
+ * View/Get a doctor note attachment PDF (R2 stored files)
+ * Generates a short-lived signed URL for secure access to private R2 objects
+ *
+ * GET /api/admin/doctor-notes/attachment/:attachmentId/view
+ *
+ * Security:
+ * - Admin-only endpoint (requires authentication and admin role)
+ * - Validates appointment ownership before generating URL
+ * - Generates time-limited signed URLs (7 minutes expiry)
+ * - URLs are never stored or cached
+ * - Only works for S3 (R2) provider files
+ */
+export async function getDoctorNoteAttachment(req: Request, res: Response) {
+  const attachmentId = req.params.attachmentId;
+  const adminId = req.user?.id;
+
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+    });
+  }
+
+  if (!attachmentId) {
+    return res.status(400).json({
+      success: false,
+      error: "Attachment ID is required",
+    });
+  }
+
+  try {
+    // Fetch attachment with doctor notes and appointment details
+    const attachment = await prisma.doctorNoteAttachment.findUnique({
+      where: { id: attachmentId },
+      include: {
+        doctorNotes: {
+          include: {
+            appointment: {
+              select: {
+                id: true,
+                doctorId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!attachment) {
+      return res.status(404).json({
+        success: false,
+        error: "Attachment not found",
+      });
+    }
+
+    // Verify attachment is not archived
+    if (attachment.isArchived) {
+      return res.status(404).json({
+        success: false,
+        error: "Attachment not found",
+      });
+    }
+
+    // Verify admin owns/manages the appointment
+    if (attachment.doctorNotes.appointment.doctorId !== adminId) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Forbidden. You don't have permission to access this attachment.",
+      });
+    }
+
+    // Only support R2 (S3) provider files
+    if (attachment.provider !== "S3") {
+      return res.status(400).json({
+        success: false,
+        error: "This endpoint only supports R2 (S3) stored files",
+      });
+    }
+
+    // Validate filePath (R2 key) exists
+    if (!attachment.filePath || !attachment.filePath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid attachment: file path is missing",
+      });
+    }
+
+    // Get R2 bucket name from environment variable
+    const r2Bucket = process.env.R2_BUCKET;
+    if (!r2Bucket) {
+      console.error("[BACKEND] R2_BUCKET environment variable is not set");
+      return res.status(500).json({
+        success: false,
+        error: "Storage configuration error. Please contact support.",
+      });
+    }
+
+    // Generate short-lived signed URL (7 minutes = 420 seconds)
+    // This provides a balance between security and usability
+    const SIGNED_URL_EXPIRY = 420; // 7 minutes
+    const signedUrl = await generateSignedDownloadUrl(
+      r2Bucket,
+      attachment.filePath,
+      SIGNED_URL_EXPIRY
+    );
+
+    return res.json({
+      success: true,
+      signedUrl,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      expiresIn: SIGNED_URL_EXPIRY, // Inform frontend of expiry time
+    });
+  } catch (error: any) {
+    console.error("[BACKEND] Get Doctor Note Attachment Error:", error);
+
+    // Handle R2 service errors
+    if (
+      error.message?.includes("Bucket name") ||
+      error.message?.includes("Object key")
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid storage configuration",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to generate file access URL",
+    });
+  }
+}
+
+/**
+ * Download a doctor note attachment via the backend (no CORS / no frontend XHR to R2).
+ *
+ * GET /api/admin/doctor-notes/attachment/:attachmentId/download
+ *
+ * Security:
+ * - Admin-only (requires authentication + admin role)
+ * - Validates appointment ownership before downloading
+ * - Files remain private in R2; only streamed to authorized admin
+ *
+ * Note: We intentionally stream from R2 server-side instead of asking the browser to
+ * fetch the R2 signed URL. This avoids browser CORS/preflight issues that break downloads.
+ */
+export async function downloadDoctorNoteAttachment(req: Request, res: Response) {
+  const attachmentId = req.params.attachmentId;
+  const adminId = req.user?.id;
+
+  if (!adminId) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  if (!attachmentId) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Attachment ID is required" });
+  }
+
+  try {
+    const attachment = await prisma.doctorNoteAttachment.findUnique({
+      where: { id: attachmentId },
+      include: {
+        doctorNotes: {
+          include: {
+            appointment: {
+              select: { id: true, doctorId: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!attachment || attachment.isArchived) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Attachment not found" });
+    }
+
+    if (attachment.doctorNotes.appointment.doctorId !== adminId) {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden. You don't have permission to access this attachment.",
+      });
+    }
+
+    if (attachment.provider !== "S3") {
+      return res.status(400).json({
+        success: false,
+        error: "This endpoint only supports R2 (S3) stored files",
+      });
+    }
+
+    if (!attachment.filePath || !attachment.filePath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid attachment: file path is missing",
+      });
+    }
+
+    const r2Bucket = process.env.R2_BUCKET;
+    if (!r2Bucket) {
+      console.error("[BACKEND] R2_BUCKET environment variable is not set");
+      return res.status(500).json({
+        success: false,
+        error: "Storage configuration error. Please contact support.",
+      });
+    }
+
+    const fileBuffer = await downloadFile(r2Bucket, attachment.filePath);
+    const safeFileName =
+      attachment.fileName && attachment.fileName.trim()
+        ? attachment.fileName.trim()
+        : `attachment-${attachment.id}`;
+
+    res.setHeader("Content-Type", attachment.mimeType || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${safeFileName.replace(/"/g, "")}"`
+    );
+    res.setHeader("Content-Length", fileBuffer.length.toString());
+
+    return res.status(200).send(fileBuffer);
+  } catch (error: any) {
+    console.error("[BACKEND] Download Doctor Note Attachment Error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to download attachment" });
+  }
+}
+
+/**
+ * Send Doctor Notes PDFs via email
+ *
+ * POST /api/admin/doctor-notes/:appointmentId/send-email
+ *
+ * Security:
+ * - Admin-only endpoint (requires authentication and admin role)
+ * - Validates appointment ownership before sending
+ * - Downloads files server-side from R2 (no signed URLs)
+ * - Files remain private in R2 at all times
+ */
+export async function sendDoctorNotesEmailController(
+  req: Request,
+  res: Response
+) {
+  const appointmentId = req.params.appointmentId;
+  const adminId = req.user?.id;
+
+  if (!adminId) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+    });
+  }
+
+  if (!appointmentId) {
+    return res.status(400).json({
+      success: false,
+      error: "Appointment ID is required",
+    });
+  }
+
+  const { toEmail, usePatientEmail } = req.body;
+
+  // Validate email parameters
+  if (!usePatientEmail && !toEmail) {
+    return res.status(400).json({
+      success: false,
+      error: "Either usePatientEmail must be true or toEmail must be provided",
+    });
+  }
+
+  if (usePatientEmail && toEmail) {
+    return res.status(400).json({
+      success: false,
+      error: "Cannot specify both usePatientEmail and toEmail",
+    });
+  }
+
+  try {
+    // Fetch appointment with patient details and doctor notes
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        doctorNotes: {
+          include: {
+            attachments: {
+              where: {
+                isArchived: false,
+                // Don't filter by provider here - we'll filter for PDFs later
+                // Some PDFs might be stored in Cloudinary or R2
+              },
+              select: {
+                id: true,
+                fileName: true,
+                filePath: true,
+                mimeType: true,
+                sizeInBytes: true,
+                fileCategory: true, // Include fileCategory for filtering
+                provider: true, // Include provider to know storage type
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: "Appointment not found",
+      });
+    }
+
+    // Verify admin owns/manages the appointment
+    if (appointment.doctorId !== adminId) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Forbidden. You don't have permission to access this appointment.",
+      });
+    }
+
+    // Check if doctor notes exist
+    if (!appointment.doctorNotes) {
+      return res.status(404).json({
+        success: false,
+        error: "Doctor notes not found for this appointment",
+      });
+    }
+
+    // Log all attachments before filtering for debugging
+    console.log("==========================================");
+    console.log("[EMAIL] DATABASE ATTACHMENTS INSPECTION");
+    console.log("==========================================");
+    console.log(
+      `Total attachments in database: ${appointment.doctorNotes.attachments.length}`
+    );
+
+    if (appointment.doctorNotes.attachments.length === 0) {
+      console.log("[EMAIL] ⚠️ NO ATTACHMENTS FOUND IN DATABASE");
+      console.log("==========================================");
+    } else {
+      console.log("\n[EMAIL] Attachment Details from Database:");
+      appointment.doctorNotes.attachments.forEach((att, index) => {
+        console.log(`\n--- Attachment ${index + 1} ---`);
+        console.log(`  ID: ${att.id}`);
+        console.log(`  fileName: ${att.fileName}`);
+        console.log(`  mimeType: ${att.mimeType || "NULL"}`);
+        console.log(`  filePath: ${att.filePath || "NULL"}`);
+        console.log(
+          `  fileCategory: ${(att as any).fileCategory || "NULL"} ⬅️ CHECK THIS`
+        );
+        console.log(
+          `  provider: ${(att as any).provider || "NULL"} ⬅️ CHECK THIS`
+        );
+        console.log(`  sizeInBytes: ${att.sizeInBytes || "NULL"}`);
+        console.log(
+          `  isArchived: ${
+            (att as any).isArchived !== undefined
+              ? (att as any).isArchived
+              : "unknown"
+          }`
+        );
+
+        // Explicit check for PDF indicators
+        const isPDF =
+          att.mimeType === "application/pdf" ||
+          (att.filePath && att.filePath.includes("/pdf/")) ||
+          (att.fileName && att.fileName.toLowerCase().endsWith(".pdf"));
+        console.log(`  ⚠️  Is PDF? ${isPDF ? "YES" : "NO"}`);
+      });
+      console.log("\n==========================================");
+    }
+
+    // Get PDF attachments that are stored in R2 (S3 provider)
+    // Email service only supports R2 downloads, so we must filter by provider === S3
+    // Primary detection: mimeType === 'application/pdf' (most reliable)
+    // Secondary: filePath pattern for R2-stored PDFs (doctor-notes/pdf/...)
+    // Tertiary: file extension (.pdf) as fallback
+    // Note: Do NOT rely on fileCategory as it may have legacy/inconsistent values
+    const attachments = appointment.doctorNotes.attachments.filter((att) => {
+      const provider = (att as any).provider;
+
+      // Only process attachments stored in R2 (S3 provider)
+      // Email service can only download from R2, not Cloudinary
+      if (provider !== "S3") {
+        console.log(
+          `[EMAIL] ✗ Skipped (not R2): ${att.fileName} (provider: ${
+            provider || "unknown"
+          })`
+        );
+        return false;
+      }
+
+      // PRIMARY: Check mimeType (most reliable indicator)
+      if (att.mimeType === "application/pdf") {
+        console.log(
+          `[EMAIL] ✓ PDF detected by mimeType: ${att.fileName} (provider: S3)`
+        );
+        return true;
+      }
+
+      // SECONDARY: Check filePath pattern for R2-stored PDFs
+      // R2 PDFs are stored with path: "doctor-notes/pdf/{appointmentId}/{uuid}.pdf"
+      if (att.filePath && att.filePath.includes("/pdf/")) {
+        console.log(
+          `[EMAIL] ✓ PDF detected by filePath pattern: ${att.fileName} (provider: S3)`
+        );
+        return true;
+      }
+
+      // TERTIARY: Check file extension as fallback (for edge cases)
+      if (att.fileName && att.fileName.toLowerCase().endsWith(".pdf")) {
+        console.log(
+          `[EMAIL] ✓ PDF detected by file extension: ${att.fileName} (provider: S3)`
+        );
+        return true;
+      }
+
+      // Log why attachment was excluded (for debugging)
+      console.log(
+        `[EMAIL] ✗ Not a PDF: ${att.fileName} (mimeType: ${
+          att.mimeType || "null"
+        }, filePath: ${att.filePath ? "present" : "null"})`
+      );
+      return false;
+    });
+
+    console.log("\n[EMAIL] PDF FILTERING RESULTS:");
+    console.log("==========================================");
+    console.log(`PDFs found: ${attachments.length}`);
+    if (attachments.length > 0) {
+      console.log("\n[EMAIL] PDFs that will be sent:");
+      attachments.forEach((att, index) => {
+        console.log(`  ${index + 1}. ${att.fileName}`);
+        console.log(`     - filePath: ${att.filePath}`);
+        console.log(`     - provider: ${(att as any).provider}`);
+        console.log(`     - mimeType: ${att.mimeType}`);
+      });
+    } else {
+      console.log("\n[EMAIL] ⚠️ NO PDFs FOUND AFTER FILTERING");
+      console.log("\n[EMAIL] Filtering criteria:");
+      console.log("  1. provider === 'S3' (R2 storage)");
+      console.log("  2. mimeType === 'application/pdf' OR");
+      console.log("  3. filePath includes '/pdf/' OR");
+      console.log("  4. fileName ends with '.pdf'");
+    }
+    console.log("==========================================");
+
+    if (attachments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No PDF attachments found for this doctor note",
+      });
+    }
+
+    // Determine recipient email
+    let recipientEmail: string;
+    if (usePatientEmail) {
+      if (!appointment.patient.email) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Patient email not available. Please use a custom email address.",
+        });
+      }
+      recipientEmail = appointment.patient.email;
+    } else {
+      // Validate custom email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(toEmail)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid email address format",
+        });
+      }
+      recipientEmail = toEmail;
+    }
+
+    // Get R2 bucket name from environment variable
+    const r2Bucket = process.env.R2_BUCKET;
+    if (!r2Bucket) {
+      console.error("[BACKEND] R2_BUCKET environment variable is not set");
+      return res.status(500).json({
+        success: false,
+        error: "Storage configuration error. Please contact support.",
+      });
+    }
+
+    // Send email with attachments
+    const result = await sendDoctorNotesEmail({
+      toEmail: recipientEmail,
+      patientName: appointment.patient.name || "Patient",
+      appointmentDate: appointment.startAt,
+      attachments: attachments.map((att) => ({
+        fileName: att.fileName,
+        filePath: att.filePath,
+        mimeType: att.mimeType,
+        sizeInBytes: att.sizeInBytes,
+      })),
+      r2Bucket,
+    });
+
+    return res.json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error: any) {
+    console.error("[BACKEND] Send Doctor Notes Email Error:", error);
+
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to send email",
     });
   }
 }

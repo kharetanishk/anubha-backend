@@ -13,7 +13,7 @@ export const prisma =
     log:
       process.env.NODE_ENV === "production"
         ? ["error", "warn"]
-        : ["query", "info", "warn", "error"],
+        : ["warn", "error"],
     errorFormat: process.env.NODE_ENV === "production" ? "minimal" : "pretty",
   });
 

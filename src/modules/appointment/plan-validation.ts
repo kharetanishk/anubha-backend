@@ -150,7 +150,7 @@ export function validatePlanDetails(opts: {
   // planPackageName: planPackageName || "none",
   // planDuration: planDuration || "none",
   // });
-// Find the plan by slug
+  // Find the plan by slug
   const plan = PLAN_DEFINITIONS.find((p) => p.slug === planSlug);
 
   if (!plan) {
@@ -162,11 +162,40 @@ export function validatePlanDetails(opts: {
   }
 
   // console.log(" [PLAN VALIDATION] Plan found:", {
-  // slug: plan.slug,
-  // title: plan.title,
+  //   slug: plan.slug,
+  //   title: plan.title,
   // });
-// Validate plan name matches
-  if (plan.title !== planName) {
+
+  // Validate plan name matches (with support for admin UI combined labels)
+  //
+  // Frontend (user booking) usually sends:
+  //   planName = plan.title
+  //
+  // Admin panel may send a combined label like:
+  //   "Baby's First Solid Food Plan - Option 1: Solid Food Complete Guide (Baby-Led Weaning)"
+  // In this case we still consider it valid as long as:
+  //   - The base title matches server definition, and
+  //   - The package part matches a known package name for this plan.
+  const normalizedPlanTitle = plan.title.trim();
+  const normalizedPlanName = planName.trim();
+  const normalizedPackageName = planPackageName?.trim();
+
+  let planNameMatches = normalizedPlanName === normalizedPlanTitle;
+
+  // Allow combined admin label: "<Plan Title> - <Package Name>[...]"
+  if (!planNameMatches && normalizedPackageName) {
+    const expectedCombinedPrefix = `${normalizedPlanTitle} - ${normalizedPackageName}`;
+
+    if (
+      normalizedPlanName === expectedCombinedPrefix ||
+      normalizedPlanName.startsWith(`${expectedCombinedPrefix} `) ||
+      normalizedPlanName.startsWith(`${expectedCombinedPrefix} (`)
+    ) {
+      planNameMatches = true;
+    }
+  }
+
+  if (!planNameMatches) {
     console.error(" [PLAN VALIDATION] Plan name mismatch:", {
       expected: plan.title,
       got: planName,
@@ -176,7 +205,8 @@ export function validatePlanDetails(opts: {
     );
   }
   // console.log(" [PLAN VALIDATION] Plan name matches");
-// Prices are stored in rupees (not paise) for consistency with frontend
+
+  // Prices are stored in rupees (not paise) for consistency with frontend
   const providedPrice = Math.round(planPrice);
 
   // If package name is provided, validate against specific package

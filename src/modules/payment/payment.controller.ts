@@ -12,6 +12,7 @@ import {
   formatDateForTemplate,
   formatTimeForTemplate,
 } from "../../services/whatsapp.service";
+import { sendAppointmentConfirmationNotifications } from "../../services/notification/appointment-notification.service";
 // Invoice generation is now manual (removed automatic generation)
 import {
   paymentService,
@@ -620,117 +621,95 @@ export async function createOrderHandler(req: Request, res: Response) {
             maxWait: 2000,
           }
         );
-      } else {
-        // CRITICAL: This should NEVER happen if duplicate detection is working correctly
-        // But add triple-check to prevent creating duplicates due to race conditions
-        // console.warn(
-        // "[PAYMENT] ⚠️ No existing appointment found - performing final check before creating"
-        // );
-        const finalCheckAppointment = await prisma.appointment.findFirst({
-          where: {
-            OR: [
-              // Check by slotId, patientId, userId, startAt, planSlug
-              {
-                slotId: slot.id,
-                patientId: patientId,
-                userId: userId,
-                startAt: slot.startAt,
-                planSlug: planSlug,
-                isArchived: false,
-              },
-              // Also check without slotId (for appointments without slots)
-              {
-                patientId: patientId,
-                userId: userId,
-                startAt: slot.startAt,
-                planSlug: planSlug,
-                status: "PENDING",
-                isArchived: false,
-              },
-            ],
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
-
-        if (finalCheckAppointment) {
-          // console.log(
-          // "[PAYMENT] ✅ Found existing appointment on final check, reusing:",
-          // finalCheckAppointment.id,
-          // {
-          // status: finalCheckAppointment.status,
-          // slotId: finalCheckAppointment.slotId,
-          // }
+        } else {
+          // CRITICAL: This should NEVER happen if duplicate detection is working correctly
+          // But add triple-check to prevent creating duplicates due to race conditions
+          // console.warn(
+          // "[PAYMENT] ⚠️ No existing appointment found - performing final check before creating"
           // );
-          if (finalCheckAppointment.status === "CONFIRMED") {
+          const finalCheckAppointment = await prisma.appointment.findFirst({
+            where: {
+              OR: [
+                // Check by slotId, patientId, userId, startAt, planSlug
+                {
+                  slotId: slot.id,
+                  patientId: patientId,
+                  userId: userId,
+                  startAt: slot.startAt,
+                  planSlug: planSlug,
+                  isArchived: false,
+                },
+                // Also check without slotId (for appointments without slots)
+                {
+                  patientId: patientId,
+                  userId: userId,
+                  startAt: slot.startAt,
+                  planSlug: planSlug,
+                  status: "PENDING",
+                  isArchived: false,
+                },
+              ],
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          });
+
+          if (finalCheckAppointment) {
+            // console.log(
+            // "[PAYMENT] ✅ Found existing appointment on final check, reusing:",
+            // finalCheckAppointment.id,
+            // {
+            // status: finalCheckAppointment.status,
+            // slotId: finalCheckAppointment.slotId,
+            // }
+            // );
+            if (finalCheckAppointment.status === "CONFIRMED") {
+              return res.status(400).json({
+                success: false,
+                error:
+                  "Appointment is already confirmed. Please use the existing appointment.",
+              });
+            }
+
+            appointment = finalCheckAppointment;
+            // Update existing appointment with payment info
+            await prisma.$transaction(
+              async (tx) => {
+                await tx.appointment.update({
+                  where: { id: appointment.id },
+                  data: {
+                    paymentId: order.id,
+                    amount: plan.price,
+                    paymentStatus: "PENDING",
+                    // Ensure slotId is set if it wasn't before
+                    slotId: slot.id,
+                    startAt: slot.startAt,
+                    endAt: slot.endAt,
+                    mode: modeEnum,
+                  } as any,
+                });
+              },
+              {
+                timeout: 3000,
+                maxWait: 2000,
+              }
+            );
+          } else {
+            // CRITICAL BUG FIX: Never create new appointments in payment flow
+            // All appointments must be created BEFORE payment via createAppointmentHandler
+            // If no appointment is found, this is an error condition - return error instead of creating
+            console.error(
+              "[PAYMENT] ❌ CRITICAL: No existing appointment found for payment order. " +
+                "Appointments must be created before payment. This should not happen."
+            );
             return res.status(400).json({
               success: false,
               error:
-                "Appointment is already confirmed. Please use the existing appointment.",
+                "No appointment found for this payment. Please create an appointment first.",
             });
           }
-
-          appointment = finalCheckAppointment;
-          // Update existing appointment with payment info
-          await prisma.$transaction(
-            async (tx) => {
-              await tx.appointment.update({
-                where: { id: appointment.id },
-                data: {
-                  paymentId: order.id,
-                  amount: plan.price,
-                  paymentStatus: "PENDING",
-                  // Ensure slotId is set if it wasn't before
-                  slotId: slot.id,
-                  startAt: slot.startAt,
-                  endAt: slot.endAt,
-                  mode: modeEnum,
-                } as any,
-              });
-            },
-            {
-              timeout: 3000,
-              maxWait: 2000,
-            }
-          );
-        } else {
-          // Only create new appointment if absolutely no existing appointment found
-          // This should be rare - most appointments should be created via createAppointmentHandler
-          // console.log(
-          // "[PAYMENT] Creating new PENDING appointment (OLD FLOW - should use appointmentId flow instead)
-          // "
-          // );
-          const doctorId = await getSingleAdminId();
-          appointment = await prisma.$transaction(
-            async (tx) => {
-              return await tx.appointment.create({
-                data: {
-                  userId,
-                  doctorId,
-                  patientId,
-                  slotId: slot.id,
-                  startAt: slot.startAt,
-                  endAt: slot.endAt,
-                  paymentId: order.id,
-                  amount: plan.price,
-                  status: "PENDING", // Always create as PENDING
-                  mode: modeEnum,
-                  planSlug,
-                  planName: plan.name,
-                  planPrice: plan.price,
-                  planDuration: plan.duration,
-                  planPackageName: plan.packageName,
-                },
-              });
-            },
-            {
-              timeout: 3000,
-              maxWait: 2000,
-            }
-          );
         }
-      }
       // console.log(
       // `[PAYMENT] ✅ ${appointment ? "Updated" : "Created"} appointment in ${
       // Date.now()
@@ -1141,6 +1120,52 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
       throw transactionError;
     }
 
+    // Send notifications (WhatsApp + Email) after successful confirmation.
+    // Important: verifyPaymentHandler is the primary path in many environments where Razorpay webhooks
+    // are not configured/reachable. Webhook handler also sends notifications, but it exits early if the
+    // appointment is already CONFIRMED, so this won't double-send in normal flows.
+    setImmediate(async () => {
+      try {
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[PAYMENT:${requestId}] 📱 Sending notifications (WhatsApp + Email)...`);
+        }
+        
+        // Send WhatsApp notifications (existing logic with reminder handling)
+        await sendWhatsAppNotifications(appointment, orderId, paymentId);
+        
+        // Send email notifications (new)
+        const appointmentForEmail = appointment as any;
+        await sendAppointmentConfirmationNotifications({
+          appointment: {
+            id: appointment.id,
+            planName: appointment.planName,
+            patient: {
+              name: appointmentForEmail.patient?.name,
+              phone: appointmentForEmail.patient?.phone,
+              email: appointmentForEmail.patient?.email,
+            },
+            slot: appointmentForEmail.slot
+              ? {
+                  startAt: appointmentForEmail.slot.startAt,
+                  endAt: appointmentForEmail.slot.endAt,
+                }
+              : undefined,
+            startAt: appointment.startAt,
+            endAt: appointment.endAt,
+          },
+        });
+        
+        if (process.env.NODE_ENV === "development") {
+          console.log(`[PAYMENT:${requestId}] ✅ Notifications sent successfully`);
+        }
+      } catch (notificationError: any) {
+        console.error(
+          `[PAYMENT:${requestId}] ❌ Notification failed (non-blocking):`,
+          notificationError?.message || notificationError
+        );
+      }
+    });
+
     // Return success response
     return res.json({
       success: true,
@@ -1437,15 +1462,17 @@ async function sendWhatsAppNotifications(
   paymentId: string
 ) {
   try {
-    // console.log("==========================================");
-    // console.log(
-    // "[BOOKING CONFIRMATION] Processing appointment confirmation notifications..."
-    // );
-    // console.log("  Appointment ID:", appointment.id);
-    // console.log("  Order ID:", orderId);
-    // console.log("  Payment ID:", paymentId);
-    // console.log("  Appointment Status: CONFIRMED");
-    // console.log("==========================================");
+    if (process.env.NODE_ENV === "development") {
+      console.log("==========================================");
+      console.log(
+        "[BOOKING CONFIRMATION] Processing appointment confirmation notifications..."
+      );
+      console.log("  Appointment ID:", appointment.id);
+      console.log("  Order ID:", orderId);
+      console.log("  Payment ID:", paymentId);
+      console.log("  Appointment Status: CONFIRMED");
+      console.log("==========================================");
+    }
     // Get appointment slot time (use slot.startAt or appointment.startAt)
     const slotStartTime = appointment.slot?.startAt || appointment.startAt;
     const slotEndTime = appointment.slot?.endAt || appointment.endAt;
@@ -1585,13 +1612,15 @@ async function sendWhatsAppNotifications(
         );
 
         if (result.success) {
-          // console.log("==========================================");
-          // console.log(
-          // "[BOOKING CONFIRMATION] ✅ Booking confirmation sent successfully"
-          // );
-          // console.log("  Patient Phone:", patientPhone);
-          // console.log("  Template: Booking confirmation");
-          // console.log("==========================================");
+          if (process.env.NODE_ENV === "development") {
+            console.log("==========================================");
+            console.log(
+              "[BOOKING CONFIRMATION] ✅ Booking confirmation sent successfully"
+            );
+            console.log("  Patient Phone:", patientPhone);
+            console.log("  Template: bookingconfirm");
+            console.log("==========================================");
+          }
         } else {
           console.error("==========================================");
           console.error(
@@ -1613,11 +1642,8 @@ async function sendWhatsAppNotifications(
       }
     }
 
-    // Send admin notification using doctor_confirmation template (fixed admin phone: 919713885582)
-    // console.log("[WHATSAPP CONFIRMATION] Sending admin notification...");
-    // console.log("  Admin Phone: 919713885582 (fixed)
-    // ");
-    // console.log("  Template: doctor_confirmation");
+    // Send doctor notification using doctor_confirmation template.
+    // Always sends to fixed doctor/admin number: 919713885582 (single doctor application)
     try {
       // Prepare data for doctor notification
       const planName = appointment.planName || "Consultation Plan";
@@ -1637,15 +1663,22 @@ async function sendWhatsAppNotifications(
         patientName,
         appointmentDate,
         slotTimeFormatted
+        // doctorPhone parameter is ignored - always uses fixed admin/doctor number (919713885582)
       );
       if (adminResult.success) {
-        // console.log("==========================================");
-        // console.log(
-        // "[WHATSAPP CONFIRMATION] ✅ Admin notification sent successfully"
-        // );
-        // console.log("  Admin Phone: 919713885582");
-        // console.log("  Template: doctor_confirmation");
-        // console.log("==========================================");
+        if (process.env.NODE_ENV === "development") {
+          console.log("==========================================");
+          console.log(
+            "[WHATSAPP CONFIRMATION] ✅ Doctor notification sent successfully"
+          );
+          console.log("  Doctor/Admin Phone: 919713885582 (fixed)");
+          console.log("  Template: doctor_confirmation");
+          console.log("  Plan Name:", planName);
+          console.log("  Patient Name:", patientName);
+          console.log("  Appointment Date:", appointmentDate);
+          console.log("  Slot Time:", slotTimeFormatted);
+          console.log("==========================================");
+        }
       } else {
         console.error("==========================================");
         console.error("[WHATSAPP CONFIRMATION] ❌ Admin notification failed");
@@ -1930,7 +1963,10 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
               //   "[WEBHOOK] ⚠️ Appointment not found for order:",
               //   orderId
               // );
+              // CRITICAL: Never create new appointments in payment flow
+              // If appointment not found, it means the appointment was never created or was deleted
               // Don't fail webhook - appointment might be processed via verifyPaymentHandler
+              // But DO NOT create a new appointment - this would cause duplicate appointments
               return;
             }
 
@@ -2033,23 +2069,47 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
               }
             }
 
-            // Send WhatsApp notifications (outside transaction to avoid blocking)
+            // Send notifications (WhatsApp + Email) (outside transaction to avoid blocking)
             // Use setImmediate to ensure transaction completes first
             setImmediate(async () => {
               try {
+                // Send WhatsApp notifications (existing logic with reminder handling)
                 await sendWhatsAppNotifications(
                   appointment,
                   orderId,
                   paymentId
                 );
+                
+                // Send email notifications (new)
+                const appointmentForEmail = appointment as any;
+                await sendAppointmentConfirmationNotifications({
+                  appointment: {
+                    id: appointment.id,
+                    planName: appointment.planName,
+                    patient: {
+                      name: appointmentForEmail.patient?.name,
+                      phone: appointmentForEmail.patient?.phone,
+                      email: appointmentForEmail.patient?.email,
+                    },
+                    slot: appointmentForEmail.slot
+                      ? {
+                          startAt: appointmentForEmail.slot.startAt,
+                          endAt: appointmentForEmail.slot.endAt,
+                        }
+                      : undefined,
+                    startAt: appointment.startAt,
+                    endAt: appointment.endAt,
+                  },
+                });
+                
                 // console.log(
-                //   "[WEBHOOK] ✅ WhatsApp notifications sent for appointment:",
+                //   "[WEBHOOK] ✅ Notifications sent for appointment:",
                 //   appointment.id
                 // );
-              } catch (whatsappError: any) {
+              } catch (notificationError: any) {
                 console.error(
-                  "[WEBHOOK] ❌ WhatsApp notification failed (non-blocking):",
-                  whatsappError.message
+                  "[WEBHOOK] ❌ Notification failed (non-blocking):",
+                  notificationError.message
                 );
               }
 

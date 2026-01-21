@@ -49,18 +49,55 @@ export class PatientService {
     return patient;
   }
 
-  async getMyPatients(userId: string) {
-    return prisma.patientDetials.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        gender: true,
-        createdAt: true,
-      },
-    });
+  async getMyPatients(
+    userId: string,
+    page?: number,
+    limit?: number
+  ): Promise<{
+    patients: Array<{
+      id: string;
+      name: string;
+      phone: string;
+      gender: string;
+      createdAt: Date;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const where: any = {
+      userId,
+      isArchived: false,
+    };
+
+    // Pagination
+    const pageNum = Math.max(1, page || 1);
+    const lim = Math.min(200, Math.max(1, limit || 10));
+    const skip = (pageNum - 1) * lim;
+
+    const [patients, total] = await Promise.all([
+      prisma.patientDetials.findMany({
+        where,
+        skip,
+        take: lim,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          gender: true,
+          createdAt: true,
+        },
+      }),
+      prisma.patientDetials.count({ where }),
+    ]);
+
+    return {
+      patients,
+      total,
+      page: pageNum,
+      limit: lim,
+    };
   }
 
   async getByIdForUser(patientId: string, userId: string) {
@@ -86,11 +123,52 @@ export class PatientService {
     return patient;
   }
 
-  async adminListAllPatients() {
-    return prisma.patientDetials.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { user: true },
-    });
+  async adminListAllPatients(
+    page?: number,
+    limit?: number,
+    search?: string
+  ): Promise<{
+    patients: Array<any>;
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const where: any = {
+      isArchived: false,
+    };
+
+    // Add search filter if provided
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      where.OR = [
+        { name: { contains: searchTerm, mode: "insensitive" } },
+        { phone: { contains: searchTerm, mode: "insensitive" } },
+        { email: { contains: searchTerm, mode: "insensitive" } },
+      ];
+    }
+
+    // Pagination
+    const pageNum = Math.max(1, page || 1);
+    const lim = Math.min(200, Math.max(1, limit || 20));
+    const skip = (pageNum - 1) * lim;
+
+    const [patients, total] = await Promise.all([
+      prisma.patientDetials.findMany({
+        where,
+        skip,
+        take: lim,
+        orderBy: { createdAt: "desc" },
+        include: { user: true },
+      }),
+      prisma.patientDetials.count({ where }),
+    ]);
+
+    return {
+      patients,
+      total,
+      page: pageNum,
+      limit: lim,
+    };
   }
 
   async getByIdForAdmin(patientId: string) {
@@ -137,7 +215,8 @@ export class PatientService {
   async linkFilesToPatient(
     patientId: string,
     fileIds: string[],
-    userId: string
+    userId: string,
+    appointmentId?: string
   ) {
     // Verify patient belongs to user
     const patient = await prisma.patientDetials.findFirst({
@@ -148,11 +227,35 @@ export class PatientService {
       throw new Error("Patient not found or unauthorized");
     }
 
-    // Link files to patient
+    // If appointmentId is provided, verify it belongs to the patient and user
+    if (appointmentId) {
+      const appointment = await prisma.appointment.findFirst({
+        where: {
+          id: appointmentId,
+          patientId,
+          userId,
+          isArchived: false,
+        },
+      });
+
+      if (!appointment) {
+        throw new Error(
+          "Appointment not found or does not belong to this patient"
+        );
+      }
+    }
+
+    // Link files to patient and optionally to appointment
+    // CRITICAL: Files must be scoped to appointments to prevent sharing across appointments
     if (fileIds.length > 0) {
-      await prisma.file.updateMany({
+      // NOTE: Prisma client types may not yet include `File.appointmentId` until prisma generate is run.
+      // We intentionally cast here so `tsc` remains green in environments that run `tsc` without `prisma generate`.
+      await (prisma as any).file.updateMany({
         where: { id: { in: fileIds } },
-        data: { patientId },
+        data: {
+          patientId,
+          ...(appointmentId && { appointmentId }), // Link to appointment if provided
+        },
       });
     }
 

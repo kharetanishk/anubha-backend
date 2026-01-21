@@ -12,20 +12,40 @@ import { AppError } from "../../util/AppError";
 export class AdminProfileService {
   /**
    * Extract public ID from Cloudinary URL
+   * Handles various Cloudinary URL formats:
+   * - https://res.cloudinary.com/{cloud_name}/image/upload/{folder}/{public_id}.{ext}
+   * - https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{folder}/{public_id}.{ext}
+   * - URLs with transformations
    * @param url Cloudinary secure URL
    * @returns Public ID or null if extraction fails
    */
   private extractPublicIdFromUrl(url: string): string | null {
     try {
-      // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{folder}/{public_id}.{ext}
-      const urlParts = url.split("/");
-      const uploadIndex = urlParts.findIndex((part) => part === "upload");
-      if (uploadIndex === -1) return null;
+      // Remove query parameters if any
+      const urlWithoutParams = url.split("?")[0];
 
-      // Get everything after "upload"
-      const pathAfterUpload = urlParts.slice(uploadIndex + 1).join("/");
-      // Remove file extension
-      const publicId = pathAfterUpload.split(".")[0];
+      // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{folder}/{public_id}.{ext}
+      const urlParts = urlWithoutParams.split("/");
+      const uploadIndex = urlParts.findIndex((part) => part === "upload");
+
+      if (uploadIndex === -1) {
+        console.warn("[ADMIN PROFILE] Invalid Cloudinary URL format:", url);
+        return null;
+      }
+
+      // Get everything after "upload" (skip version if present)
+      const pathAfterUpload = urlParts.slice(uploadIndex + 1);
+
+      // Remove version number if present (format: v1234567890)
+      const pathWithoutVersion =
+        pathAfterUpload[0]?.startsWith("v") && /^v\d+$/.test(pathAfterUpload[0])
+          ? pathAfterUpload.slice(1)
+          : pathAfterUpload;
+
+      // Join the path and remove file extension
+      const fullPath = pathWithoutVersion.join("/");
+      const publicId = fullPath.split(".").slice(0, -1).join("."); // Remove last part (extension)
+
       return publicId || null;
     } catch (error) {
       console.error("[ADMIN PROFILE] Failed to extract public ID:", error);
@@ -110,9 +130,28 @@ export class AdminProfileService {
       if (error instanceof AppError) {
         throw error;
       }
+
+      // Handle Prisma connection errors specifically
+      if (error?.code === "P1001" || error?.code === "P1000") {
+        console.error("[ADMIN PROFILE] Database connection error:", error);
+        throw new AppError(
+          "Database connection failed. Please check your database server and try again.",
+          503 // Service Unavailable
+        );
+      }
+
+      // Handle other Prisma errors
+      if (error?.code?.startsWith("P")) {
+        console.error("[ADMIN PROFILE] Prisma error:", error);
+        throw new AppError(
+          "Database operation failed. Please try again later.",
+          500
+        );
+      }
+
       console.error("[ADMIN PROFILE] Upload error:", error);
       throw new AppError(
-        `Failed to upload profile picture: ${error.message}`,
+        `Failed to upload profile picture: ${error.message || "Unknown error"}`,
         500
       );
     }
@@ -143,9 +182,28 @@ export class AdminProfileService {
       if (error instanceof AppError) {
         throw error;
       }
+
+      // Handle Prisma connection errors specifically
+      if (error?.code === "P1001" || error?.code === "P1000") {
+        console.error("[ADMIN PROFILE] Database connection error:", error);
+        throw new AppError(
+          "Database connection failed. Please check your database server and try again.",
+          503 // Service Unavailable
+        );
+      }
+
+      // Handle other Prisma errors
+      if (error?.code?.startsWith("P")) {
+        console.error("[ADMIN PROFILE] Prisma error:", error);
+        throw new AppError(
+          "Database operation failed. Please try again later.",
+          500
+        );
+      }
+
       console.error("[ADMIN PROFILE] Get error:", error);
       throw new AppError(
-        `Failed to get profile picture: ${error.message}`,
+        `Failed to get profile picture: ${error.message || "Unknown error"}`,
         500
       );
     }
@@ -215,9 +273,28 @@ export class AdminProfileService {
       if (error instanceof AppError) {
         throw error;
       }
+
+      // Handle Prisma connection errors specifically
+      if (error?.code === "P1001" || error?.code === "P1000") {
+        console.error("[ADMIN PROFILE] Database connection error:", error);
+        throw new AppError(
+          "Database connection failed. Please check your database server and try again.",
+          503 // Service Unavailable
+        );
+      }
+
+      // Handle other Prisma errors
+      if (error?.code?.startsWith("P")) {
+        console.error("[ADMIN PROFILE] Prisma error:", error);
+        throw new AppError(
+          "Database operation failed. Please try again later.",
+          500
+        );
+      }
+
       console.error("[ADMIN PROFILE] Delete error:", error);
       throw new AppError(
-        `Failed to delete profile picture: ${error.message}`,
+        `Failed to delete profile picture: ${error.message || "Unknown error"}`,
         500
       );
     }

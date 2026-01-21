@@ -16,6 +16,7 @@ import invoiceRoutes from "./modules/invoice/invoice.routes";
 import testimonialsRoutes from "./modules/testimonials/testimonials.routes";
 import prisma from "./database/prismaclient";
 import { startAppointmentReminderCron } from "./cron/reminder";
+import { startReminderWorker } from "./workers/reminder-worker";
 import { testMsg91Connection } from "./services/whatsapp.service";
 import { apiLogger } from "./middleware/apiLogger";
 import { env, validateRazorpayConfig } from "./config/env";
@@ -347,8 +348,11 @@ async function startServer() {
     // Apply database health check middleware to all routes
     app.use(ensureDatabaseConnection);
 
-    // Start appointment reminder cron job
+    // Start appointment reminder cron job (lightweight - only enqueues jobs)
     startAppointmentReminderCron();
+
+    // Start reminder worker (processes jobs in background)
+    startReminderWorker();
 
     // Email service (Resend) is ready - no connection verification needed
 

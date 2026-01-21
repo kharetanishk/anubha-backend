@@ -78,14 +78,56 @@ export async function createTestimonial(req: Request, res: Response) {
  * GET /admin/testimonials
  */
 export async function getAllTestimonials(req: Request, res: Response) {
+  const startTime = Date.now(); // For performance monitoring
   try {
-    const testimonials = await prisma.testimonial.findMany({
-      orderBy: { createdAt: "desc" },
-    });
+    const { page = "1", limit = "20", isActive, search } = req.query;
+
+    const where: any = {};
+
+    // Filter by active/inactive status if provided
+    if (isActive !== undefined) {
+      where.isActive = isActive === "true";
+    }
+
+    // Add search filter if provided
+    if (search && typeof search === "string" && search.trim()) {
+      const searchTerm = search.trim();
+      where.OR = [
+        { name: { contains: searchTerm, mode: "insensitive" } },
+        { text: { contains: searchTerm, mode: "insensitive" } },
+      ];
+    }
+
+    // Pagination
+    const pageNum = Math.max(1, Number(page));
+    const lim = Math.min(200, Math.max(1, Number(limit)));
+    const skip = (pageNum - 1) * lim;
+
+    const [testimonials, total] = await Promise.all([
+      prisma.testimonial.findMany({
+        where,
+        skip,
+        take: lim,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.testimonial.count({ where }),
+    ]);
+
+    const durationMs = Date.now() - startTime;
+
+    // Log performance occasionally in development
+    if (process.env.NODE_ENV === "development" && Math.random() < 0.1) {
+      console.log(
+        `[ADMIN TESTIMONIALS PERFORMANCE] Query took ${durationMs}ms. Total: ${total}, Page: ${pageNum}, Limit: ${lim}, isActive: ${isActive || "all"}, Search: ${search || "none"}`
+      );
+    }
 
     return res.status(200).json({
       success: true,
       testimonials,
+      total,
+      page: pageNum,
+      limit: lim,
     });
   } catch (error: any) {
     console.error("[TESTIMONIALS] Get all error:", error);
@@ -102,9 +144,11 @@ export async function getAllTestimonials(req: Request, res: Response) {
  */
 export async function getActiveTestimonials(req: Request, res: Response) {
   try {
+    // Limit to latest 15 testimonials for public view
     const testimonials = await prisma.testimonial.findMany({
       where: { isActive: true },
       orderBy: { createdAt: "desc" },
+      take: 15,
       select: {
         id: true,
         name: true,

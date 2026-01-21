@@ -95,6 +95,7 @@ export class PatientController {
   }
 
   async listMine(req: Request, res: Response) {
+    const startTime = Date.now(); // For performance monitoring
     try {
       if (!req.user) {
         return res
@@ -102,11 +103,30 @@ export class PatientController {
           .json({ success: false, message: "Unauthorized" });
       }
 
-      const patients = await patientService.getMyPatients(req.user.id);
+      const page = req.query.page ? Number(req.query.page) : undefined;
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+
+      const result = await patientService.getMyPatients(
+        req.user.id,
+        page,
+        limit
+      );
+
+      const durationMs = Date.now() - startTime;
+
+      // Log performance occasionally in development
+      if (process.env.NODE_ENV === "development" && Math.random() < 0.1) {
+        console.log(
+          `[USER PATIENTS PERFORMANCE] Query took ${durationMs}ms. Total: ${result.total}, Page: ${result.page}, Limit: ${result.limit}`
+        );
+      }
 
       return res.json({
         success: true,
-        patients,
+        patients: result.patients,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
       });
     } catch (err) {
       return res.status(500).json({
@@ -144,9 +164,34 @@ export class PatientController {
   }
 
   async adminListAll(req: Request, res: Response) {
+    const startTime = Date.now(); // For performance monitoring
     try {
-      const patients = await patientService.adminListAllPatients();
-      return res.json({ success: true, patients });
+      const page = req.query.page ? Number(req.query.page) : undefined;
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const search = req.query.search as string | undefined;
+
+      const result = await patientService.adminListAllPatients(
+        page,
+        limit,
+        search
+      );
+
+      const durationMs = Date.now() - startTime;
+
+      // Log performance occasionally in development
+      if (process.env.NODE_ENV === "development" && Math.random() < 0.1) {
+        console.log(
+          `[ADMIN ALL PATIENTS PERFORMANCE] Query took ${durationMs}ms. Total: ${result.total}, Page: ${result.page}, Limit: ${result.limit}, Search: ${search || "none"}`
+        );
+      }
+
+      return res.json({
+        success: true,
+        patients: result.patients,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      });
     } catch {
       return res.status(500).json({
         success: false,
@@ -185,7 +230,7 @@ export class PatientController {
       }
 
       const { id } = req.params;
-      const { fileIds } = req.body;
+      const { fileIds, appointmentId } = req.body;
 
       if (!Array.isArray(fileIds)) {
         return res.status(400).json({
@@ -194,10 +239,21 @@ export class PatientController {
         });
       }
 
+      // CRITICAL: appointmentId is required to scope files to appointments
+      // This prevents files from being shared across different appointments
+      if (!appointmentId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "appointmentId is required. Files must be linked to a specific appointment.",
+        });
+      }
+
       const result = await patientService.linkFilesToPatient(
         id,
         fileIds,
-        req.user.id
+        req.user.id,
+        appointmentId
       );
 
       return res.json(result);

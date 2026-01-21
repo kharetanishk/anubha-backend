@@ -27,6 +27,8 @@ model User {
   @@index([email])
   @@index([isArchived])
   @@index([resetPasswordToken])
+  // Composite index for admin users list query (isArchived filter + createdAt ordering)
+  @@index([isArchived, createdAt])
 }
 
 model OTP {
@@ -54,6 +56,8 @@ model Testimonial {
   updatedAt DateTime @updatedAt
 
   @@index([isActive])
+  // Composite index for admin testimonials list query (isActive filter + createdAt ordering)
+  @@index([isActive, createdAt])
 }
 
 
@@ -131,6 +135,10 @@ model PatientDetials {
   @@index([phone])
   @@index([email])
   @@index([isArchived])
+  // Composite index for admin all patients list query (isArchived filter + createdAt ordering)
+  @@index([isArchived, createdAt])
+  // Composite index for user patients list query (userId + isArchived filter + createdAt ordering)
+  @@index([userId, isArchived, createdAt])
 }
 
 model Recall {
@@ -167,21 +175,24 @@ model RecallEntry {
 }
 
 model File {
-  id          String          @id @default(uuid())
-  url         String
-  fileName    String
-  mimeType    String
-  createdAt   DateTime        @default(now())
-  provider    StorageProvider @default(CLOUDINARY)
-  sizeInBytes Int
-  updatedAt   DateTime        @updatedAt
-  patientId   String?
-  publicId    String
-  archivedAt  DateTime?
-  isArchived  Boolean         @default(false)
-  patient     PatientDetials? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  id            String          @id @default(uuid())
+  url           String
+  fileName      String
+  mimeType      String
+  createdAt     DateTime        @default(now())
+  provider      StorageProvider @default(CLOUDINARY)
+  sizeInBytes   Int
+  updatedAt     DateTime        @updatedAt
+  patientId     String?
+  appointmentId String?
+  publicId      String
+  archivedAt    DateTime?
+  isArchived    Boolean         @default(false)
+  patient       PatientDetials? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointment   Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
   @@index([patientId])
+  @@index([appointmentId])
   @@index([isArchived])
 }
 
@@ -245,6 +256,7 @@ model Appointment {
   recall                  Recall?
   Reminder                Reminder[]
   doctorNotes             DoctorNotes?
+  files                   File[]
 
   @@index([startAt])
   @@index([doctorId, startAt])
@@ -258,6 +270,13 @@ model Appointment {
   @@index([paymentId]) // CRITICAL: Index for payment verification queries
   @@index([userId, paymentId, isArchived]) // Composite index for common payment lookup pattern
   @@index([isDeletedByAdmin])
+  // Composite index optimized for adminGetAppointments query pattern:
+  // WHERE isArchived = false AND isDeletedByAdmin = false
+  //   AND optional status/mode filters
+  //   AND optional startAt date range
+  @@index([isArchived, isDeletedByAdmin, status, mode, startAt])
+  // Composite index for user appointments list query (userId + status filter + startAt ordering)
+  @@index([userId, status, startAt])
 }
 
 model DoctorDayOff {
@@ -315,6 +334,9 @@ model DoctorNotes {
   workoutTiming           String?
   workoutType             String?
   formData                Json?
+  /// Section 8 (Body Measurements) extracted for queryability and forward-compatible structure.
+  /// This mirrors `formData.bodyMeasurements` and is kept in sync by the backend.
+  bodyMeasurements        Json?                  @map("body_measurements")
   analyticsData           Json?
   attachments             DoctorNoteAttachment[]
   foodFrequencyItems      FoodFrequencyItem[]
