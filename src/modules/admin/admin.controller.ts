@@ -20,6 +20,12 @@ import { downloadFile } from "../../services/storage/r2.service";
 import { sendDoctorNotesEmail } from "../../services/email/doctor-notes-email.service";
 import { fromZonedTime } from "date-fns-tz";
 import { AppError } from "../../util/AppError";
+import {
+  deepMerge,
+  parseDoctorNotesFormData,
+  syncDoctorNoteAttachments,
+  upsertDoctorNotes,
+} from "./doctor-notes.service";
 
 const BUSINESS_TIMEZONE = "Asia/Kolkata";
 
@@ -966,10 +972,7 @@ export async function saveDoctorNotes(req: Request, res: Response) {
       //   `[BACKEND] Parsing form data - Is Draft: ${isDraft}, Has Files: ${hasFiles}, File Count: ${files.length}`
       // );
       try {
-        parsedFormData =
-          typeof formDataStr === "string"
-            ? JSON.parse(formDataStr)
-            : formDataStr;
+        parsedFormData = parseDoctorNotesFormData(formDataStr);
         // console.log(
         // `[BACKEND] Parsed form data keys: ${Object.keys(parsedFormData)
         // .join(
@@ -1335,20 +1338,38 @@ export async function saveDoctorNotes(req: Request, res: Response) {
       });
     }
 
-    // Check if notes already exist for PATCH
-    const existingNotes = await prisma.doctorNotes.findUnique({
-      where: { appointmentId: validatedAppointmentId },
-    });
+    // Extract sectionKey from header (preferred) or body (fallback)
+    // Header format: X-Section-Key or section-key
+    // Body format: { sectionKey: "foodFrequency" } or formData: "sectionKey=..."
+    let sectionKey: string | undefined;
+    if (req.headers["x-section-key"]) {
+      sectionKey = req.headers["x-section-key"] as string;
+    } else if (req.headers["section-key"]) {
+      sectionKey = req.headers["section-key"] as string;
+    } else if ((req as any).body?.sectionKey) {
+      // For both JSON and multipart/form-data
+      const bodySectionKey = (req as any).body.sectionKey;
+      sectionKey = typeof bodySectionKey === "string" ? bodySectionKey : undefined;
+    }
 
-    // For PATCH, merge with existing data
-    if (isPatch && existingNotes) {
-      const existingFormData = (existingNotes.formData as any) || {};
-      // Deep merge partial data with existing data
-      parsedFormData = deepMerge(existingFormData, parsedFormData);
-      // console.log(
-      // "[BACKEND] PATCH - Merged with existing data. Changed fields:",
-      // Object.keys(parsedFormData)
-      // );
+    // If sectionKey is provided, skip deep merge (service will handle partial update)
+    // Otherwise, fallback to existing full merge behavior (backward compatible)
+    if (!sectionKey) {
+      // Check if notes already exist for PATCH
+      const existingNotes = await prisma.doctorNotes.findUnique({
+        where: { appointmentId: validatedAppointmentId },
+      });
+
+      // For PATCH, merge with existing data (original behavior)
+      if (isPatch && existingNotes) {
+        const existingFormData = (existingNotes.formData as any) || {};
+        // Deep merge partial data with existing data
+        parsedFormData = deepMerge(existingFormData, parsedFormData);
+        // console.log(
+        // "[BACKEND] PATCH - Merged with existing data. Changed fields:",
+        // Object.keys(parsedFormData)
+        // );
+      }
     }
 
     // Log bodyMeasurements data for debugging
@@ -1359,141 +1380,32 @@ export async function saveDoctorNotes(req: Request, res: Response) {
       // );
     }
 
-    // Upsert doctor notes
-    const doctorNotes = await prisma.doctorNotes.upsert({
-      where: {
-        appointmentId: validatedAppointmentId,
-      },
-      update: {
-        formData: parsedFormData as any,
-        isDraft: isDraft ?? false,
-        isCompleted: !isDraft,
-        submittedAt: isDraft ? null : new Date(),
-        updatedBy: adminId,
-        updatedAt: new Date(),
-      },
-      create: {
-        appointmentId: validatedAppointmentId,
-        formData: parsedFormData as any,
-        isDraft: isDraft ?? false,
-        isCompleted: !isDraft,
-        submittedAt: isDraft ? null : new Date(),
-        createdBy: adminId,
-        updatedBy: adminId,
-      },
+    // Upsert doctor notes (with optional sectionKey for partial updates)
+    const doctorNotes = await upsertDoctorNotes({
+      appointmentId: validatedAppointmentId,
+      adminId,
+      formData: parsedFormData,
+      isDraft: isDraft ?? false,
+      sectionKey: sectionKey || undefined, // Pass sectionKey if provided
+      isPatch: isPatch, // Indicate if this is a PATCH request
     });
+
+    // Ensure doctorNotes is not null (should never be null after upsert)
+    if (!doctorNotes) {
+      console.error("[BACKEND] Unexpected: doctorNotes is null after upsert");
+      return res.status(500).json({
+        success: false,
+        error: "Failed to save doctor notes",
+      });
+    }
 
     // Handle file attachments if files were uploaded
     const uploadedFiles = (req as any).uploadedFiles || [];
     if (uploadedFiles.length > 0) {
-      // console.log(`[BACKEND] Creating ${uploadedFiles.length} attachment(s)
-      // `);
-
-      // Create attachments for each uploaded file
-      for (const uploadedFile of uploadedFiles) {
-        // Check if attachment with same filePath (R2 key) already exists
-        const existingAttachment = await prisma.doctorNoteAttachment.findFirst({
-          where: {
-            doctorNotesId: doctorNotes.id,
-            filePath: uploadedFile.filePath, // Match by R2 object key
-            isArchived: false,
-          },
-        });
-
-        if (existingAttachment) {
-          // Determine file category and section based on filePath pattern
-          let fileCategory: string = "DIET_CHART";
-          let section: string | null = "DietPrescribed";
-
-          // Check if this is a medical report
-          if (uploadedFile.filePath.includes("/reports/")) {
-            fileCategory = "LAB_REPORT";
-            section = "HealthProfile";
-          } else if (uploadedFile.filePath.includes("/pre-post/pre/")) {
-            fileCategory = "IMAGE";
-            section = "PrePostConsultation";
-          } else if (uploadedFile.filePath.includes("/pre-post/post/")) {
-            fileCategory = "IMAGE";
-            section = "PrePostConsultation";
-          } else if (uploadedFile.filePath.includes("/pdf/")) {
-            fileCategory = "DIET_CHART";
-            section = "DietPrescribed";
-          }
-
-          // Update existing attachment
-          await prisma.doctorNoteAttachment.update({
-            where: { id: existingAttachment.id },
-            data: {
-              fileName: uploadedFile.fileName,
-              fileUrl: null, // No public URLs for R2 files
-              mimeType: uploadedFile.mimeType,
-              sizeInBytes: uploadedFile.sizeInBytes,
-              provider: "S3", // Ensure provider is set to S3 for R2 files
-              fileCategory: fileCategory as any,
-              section,
-              updatedAt: new Date(),
-            },
-          });
-          // console.log(
-          // `[BACKEND] Updated existing attachment: ${uploadedFile.fileName}`
-          // );
-        } else {
-          // Determine file category and section based on filePath pattern
-          let fileCategory: string = "DIET_CHART";
-          let section: string | null = "DietPrescribed";
-
-          // Check if this is a medical report
-          if (uploadedFile.filePath.includes("/reports/")) {
-            fileCategory = "LAB_REPORT"; // Use LAB_REPORT category for medical reports
-            section = "HealthProfile";
-          } else if (uploadedFile.filePath.includes("/pre-post/pre/")) {
-            fileCategory = "IMAGE";
-            section = "PrePostConsultation";
-          } else if (uploadedFile.filePath.includes("/pre-post/post/")) {
-            fileCategory = "IMAGE";
-            section = "PrePostConsultation";
-          } else if (uploadedFile.filePath.includes("/pdf/")) {
-            // PDF files (diet charts)
-            fileCategory = "DIET_CHART";
-            section = "DietPrescribed";
-          }
-
-          // Create new attachment
-          const newAttachment = await prisma.doctorNoteAttachment.create({
-            data: {
-              doctorNotesId: doctorNotes.id,
-              fileName: uploadedFile.fileName,
-              filePath: uploadedFile.filePath, // Store R2 object key
-              fileUrl: null, // No public URLs for R2 files (use signed URLs on-demand)
-              mimeType: uploadedFile.mimeType,
-              sizeInBytes: uploadedFile.sizeInBytes,
-              provider: "S3", // R2 uses S3-compatible API
-              fileCategory: fileCategory as any,
-              section,
-            },
-          });
-          
-          // Debug logging for medical reports
-          if (uploadedFile.filePath.includes("/reports/")) {
-            console.log("[BACKEND] Medical report attachment created:", {
-              id: newAttachment.id,
-              fileName: newAttachment.fileName,
-              filePath: newAttachment.filePath,
-              fileCategory: newAttachment.fileCategory,
-              section: newAttachment.section,
-              provider: newAttachment.provider,
-            });
-          }
-          // console.log(
-          //   `[BACKEND] Created new attachment: ${uploadedFile.fileName}`
-          // );
-        }
-      }
-
-      // console.log(
-      // `[BACKEND] Successfully processed ${uploadedFiles.length} attachment(s)
-      // `
-      // );
+      await syncDoctorNoteAttachments({
+        doctorNotesId: doctorNotes.id,
+        uploadedFiles,
+      });
     }
 
     // Verify bodyMeasurements was saved
@@ -1545,6 +1457,28 @@ export async function saveDoctorNotes(req: Request, res: Response) {
       errorResponse: err?.response,
     });
 
+    // Handle DoctorNotesServiceError (from service layer)
+    if (err?.constructor?.name === "DoctorNotesServiceError" || err?.code) {
+      const serviceError = err as import("./doctor-notes.service").DoctorNotesServiceError;
+      let statusCode = 400;
+
+      // Map service error codes to HTTP status codes
+      if (serviceError.code === "NOT_FOUND") {
+        statusCode = 404;
+      } else if (serviceError.code === "INVALID_SECTION_KEY") {
+        statusCode = 400;
+      } else if (serviceError.code === "INVALID_FORM_DATA") {
+        statusCode = 400;
+      } else if (serviceError.code === "UPDATE_FAILED") {
+        statusCode = 500;
+      }
+
+      return res.status(statusCode).json({
+        success: false,
+        error: serviceError.message || "Service error occurred",
+      });
+    }
+
     // Handle different error types
     let statusCode = 500;
     let errorMessage = "Failed to save doctor notes";
@@ -1571,31 +1505,6 @@ export async function saveDoctorNotes(req: Request, res: Response) {
       ...(err?.response?.data?.errors && { errors: err.response.data.errors }),
     });
   }
-}
-
-/**
- * Deep merge utility for merging partial updates with existing form data
- */
-function deepMerge(target: any, source: any): any {
-  const output = { ...target };
-  if (isObject(target) && isObject(source)) {
-    Object.keys(source).forEach((key) => {
-      if (isObject(source[key])) {
-        if (!(key in target)) {
-          Object.assign(output, { [key]: source[key] });
-        } else {
-          output[key] = deepMerge(target[key], source[key]);
-        }
-      } else {
-        Object.assign(output, { [key]: source[key] });
-      }
-    });
-  }
-  return output;
-}
-
-function isObject(item: any): boolean {
-  return item && typeof item === "object" && !Array.isArray(item);
 }
 
 /**
