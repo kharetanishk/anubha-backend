@@ -17,28 +17,26 @@ export async function createRecall(data: CreateRecallInput, userId: string) {
   // id: patient.id,
   // name: patient.name,
   // });
-  // If appointmentId is provided, verify it belongs to the same patient
-  if (appointmentId) {
-    // console.log(" [RECALL SERVICE] Verifying appointment ownership...");
-    const appointment = await prisma.appointment.findFirst({
-      where: { id: appointmentId, patientId, userId },
-    });
-    if (!appointment) {
-      console.error(" [RECALL SERVICE] Appointment not found or unauthorized");
-      throw new Error("Invalid appointment or unauthorized");
-    }
-    // console.log(" [RECALL SERVICE] Appointment verified:", {
-    //   id: appointment.id,
-    //   status: appointment.status,
-    // });
+  // ✅ Make appointment verification MANDATORY (removed conditional check)
+  // console.log(" [RECALL SERVICE] Verifying appointment ownership...");
+  const appointment = await prisma.appointment.findFirst({
+    where: { id: appointmentId, patientId, userId },
+  });
+  if (!appointment) {
+    console.error(" [RECALL SERVICE] Appointment not found or unauthorized");
+    throw new Error("Invalid appointment or unauthorized");
   }
+  // console.log(" [RECALL SERVICE] Appointment verified:", {
+  //   id: appointment.id,
+  //   status: appointment.status,
+  // });
 
   // console.log(" [RECALL SERVICE] Creating recall with entries...");
   const recall = await prisma.recall.create({
     data: {
       patientId,
       notes: notes ?? null,
-      appointmentId: appointmentId ?? null,
+      appointmentId, // ✅ Required, no null fallback
       entries: {
         create: entries.map((e) => ({
           mealType: e.mealType as any,

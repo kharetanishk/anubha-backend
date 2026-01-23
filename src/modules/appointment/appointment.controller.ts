@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import prisma from "../../database/prismaclient";
 import { getSingleDoctorId } from "./appointment.service";
-import { AppointmentStatus, BookingProgress } from "@prisma/client";
+import { AppointmentStatus, BookingProgress, Prisma } from "@prisma/client";
 import { AppointmentMode } from "@prisma/client";
 import { validatePlanDetails } from "./plan-validation";
+import { archiveDuplicatePendingAppointments } from "../payment/payment.controller";
 
 export async function createAppointmentHandler(req: Request, res: Response) {
   try {
@@ -25,6 +26,7 @@ export async function createAppointmentHandler(req: Request, res: Response) {
     }
 
     const {
+      appointmentId, // NEW: Optional appointment ID to update existing appointment
       patientId,
       slotId,
       planSlug,
@@ -454,6 +456,62 @@ export async function createAppointmentHandler(req: Request, res: Response) {
         });
       }
 
+      // NEW: If appointmentId is provided, update that appointment directly
+      if (appointmentId) {
+        const existingAppt = await prisma.appointment.findFirst({
+          where: {
+            id: appointmentId,
+            userId,
+            status: "PENDING",
+            isArchived: false,
+          },
+        });
+
+        if (existingAppt) {
+          // Determine booking progress
+          let progress: BookingProgress | null = null;
+          if (
+            bookingProgress &&
+            ["USER_DETAILS", "RECALL", "SLOT", "PAYMENT"].includes(
+              bookingProgress
+            )
+          ) {
+            progress = bookingProgress as BookingProgress;
+          } else {
+            if (slotId) {
+              progress = "SLOT";
+            } else if (patientId) {
+              progress = "USER_DETAILS";
+            }
+          }
+
+          // Update existing appointment
+          const updatedAppointment = await prisma.appointment.update({
+            where: { id: existingAppt.id },
+            data: {
+              bookingProgress: progress,
+              startAt: appointmentStartAt,
+              endAt: appointmentEndAt,
+              slotId: finalSlotId,
+              mode: appointmentMode as AppointmentMode,
+              planSlug,
+              planName,
+              planPrice: Number(planPrice),
+              planDuration,
+              planPackageName,
+            },
+          });
+
+          return res.status(200).json({
+            success: true,
+            message: "Appointment updated successfully",
+            data: updatedAppointment,
+            updated: true,
+          });
+        }
+        // If appointmentId provided but not found, continue with normal flow
+      }
+
       // CRITICAL: Check if a CONFIRMED appointment already exists for this patient and plan
       // This prevents creating new PENDING appointments when a CONFIRMED appointment already exists
       // Match by: userId, patientId, planSlug, startAt (date), and optionally slotId
@@ -503,21 +561,17 @@ export async function createAppointmentHandler(req: Request, res: Response) {
 
       // CRITICAL: Check if a PENDING appointment already exists for this logical booking
       // This prevents duplicate PENDING appointments when the booking flow is called multiple times
-      // Matches by: userId, patientId, startAt (slotTime), planSlug, and optionally slotId
-      // This ensures we reuse the same appointment across all booking steps
-      const pendingWhere: any = {
+      // IMPROVED: Match by logical booking (userId + patientId + planSlug) without requiring exact startAt
+      // This allows users to change slots without creating new appointments
+      const pendingWhere: Prisma.AppointmentWhereInput = {
         userId,
         patientId,
-        startAt: appointmentStartAt, // Match by slot time/date
         planSlug,
         status: "PENDING",
         isArchived: false, // Only check non-archived appointments
+        // REMOVED: startAt match (too strict - user may change slot)
+        // REMOVED: slotId match (user may change slot)
       };
-
-      // If slotId is provided, also match by slotId for more precise duplicate detection
-      if (finalSlotId) {
-        pendingWhere.slotId = finalSlotId;
-      }
 
       const existingPendingAppointment = await prisma.appointment.findFirst({
         where: pendingWhere,
@@ -621,6 +675,25 @@ export async function createAppointmentHandler(req: Request, res: Response) {
           planPackageName,
         },
       });
+
+      // NEW: Archive old PENDING duplicates immediately after creating new appointment
+      // This prevents accumulation of abandoned bookings
+      try {
+        await prisma.$transaction(async (tx) => {
+          await archiveDuplicatePendingAppointments(tx, appointment.id, {
+            userId: appointment.userId,
+            patientId: appointment.patientId,
+            planSlug: appointment.planSlug,
+            startAt: appointment.startAt, // Optional - used for logging only
+          });
+        });
+      } catch (archiveError) {
+        // Log but don't fail - appointment creation succeeded
+        console.warn(
+          "[APPOINTMENT] Failed to archive duplicates (non-critical):",
+          archiveError
+        );
+      }
     } catch (dbError: any) {
       console.error(" [BACKEND] Database error creating appointment:", dbError);
       console.error(" [BACKEND] Database error details:", {
@@ -769,7 +842,7 @@ export async function getMyAppointments(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { includePending, page = "1", limit = "20" } = req.query; // Optional query params
+    const { includePending, page = "1", limit = "20", sort } = req.query; // Optional query params
 
     // Build where clause
     const where: any = {
@@ -797,12 +870,15 @@ export async function getMyAppointments(req: Request, res: Response) {
     const lim = Math.min(200, Math.max(1, Number(limit)));
     const skip = (pageNum - 1) * lim;
 
+    // Determine sort order: latest (desc) or oldest (asc), default to latest
+    const sortOrder = sort === "oldest" ? "asc" : "desc";
+
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
         skip,
         take: lim,
-        orderBy: { createdAt: "desc" },
+        orderBy: { startAt: sortOrder },
         include: {
           patient: {
             select: {
@@ -1004,27 +1080,48 @@ export async function getUserAppointmentDetails(req: Request, res: Response) {
       where: { id },
       include: {
         patient: {
-          include: {
-            recalls: {
-              include: {
-                entries: true,
-              },
-              orderBy: { createdAt: "desc" },
-            },
-          },
+          // ❌ REMOVED recalls from here - will fetch separately by appointmentId
         },
         slot: true,
       },
     });
 
+    // ✅ Fetch appointment-scoped recalls separately (like Files)
+    const appointmentRecalls = await prisma.recall.findMany({
+      where: {
+        appointmentId: id, // ✅ Filter by appointmentId
+        isArchived: false,
+      },
+      include: {
+        entries: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
     // Reports are scoped to the appointment (not patient) to prevent cross-appointment sharing.
     // We fetch them explicitly to avoid relying on Prisma relation typings during build-time.
-    // NOTE: Prisma client types may not yet include `File.appointmentId` until prisma generate is run.
-    // We intentionally cast here so `tsc` remains green in environments that run `tsc` without `prisma generate`.
-    const appointmentFiles = await (prisma as any).file.findMany({
-      where: { appointmentId: id, isArchived: false },
-      orderBy: { createdAt: "asc" },
-    });
+    // NOTE: Using raw SQL query as workaround until Prisma client is regenerated with File.appointmentId support.
+    // TODO: After running `npx prisma generate`, replace with: prisma.file.findMany({ where: { appointmentId: id, isArchived: false } })
+    const appointmentFiles = await prisma.$queryRaw<Array<{
+      id: string;
+      url: string;
+      fileName: string;
+      mimeType: string;
+      createdAt: Date;
+      provider: string;
+      sizeInBytes: number;
+      updatedAt: Date;
+      patientId: string | null;
+      appointmentId: string | null;
+      publicId: string;
+      archivedAt: Date | null;
+      isArchived: boolean;
+    }>>`
+      SELECT * FROM "File"
+      WHERE "appointmentId"::text = ${id}::text
+        AND "isArchived" = false
+      ORDER BY "createdAt" ASC
+    `;
 
     // Exclude archived appointments from user view
     if (appointment && appointment.isArchived) {
@@ -1046,6 +1143,10 @@ export async function getUserAppointmentDetails(req: Request, res: Response) {
       success: true,
       appointment: {
         ...(appointment as any),
+        patient: {
+          ...(appointment as any).patient,
+          recalls: appointmentRecalls, // ✅ Only appointment-specific recalls
+        },
         files: appointmentFiles,
       },
     });

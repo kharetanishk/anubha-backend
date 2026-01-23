@@ -70,7 +70,7 @@ function dateRangeFromQuery(dateStr?: string) {
  */
 export async function adminGetAppointments(req: Request, res: Response) {
   try {
-    const { date, status, mode, page = "1", limit = "20", q } = req.query;
+    const { date, status, mode, page = "1", limit = "20", q, sort } = req.query;
 
     const where: any = {};
 
@@ -101,6 +101,9 @@ export async function adminGetAppointments(req: Request, res: Response) {
 
     const startTime = Date.now();
 
+    // Determine sort order: latest (desc) or oldest (asc), default to latest
+    const sortOrder = sort === "oldest" ? "asc" : "desc";
+
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
@@ -124,7 +127,7 @@ export async function adminGetAppointments(req: Request, res: Response) {
             },
           },
         } as any,
-        orderBy: { startAt: "desc" }, // Most recent first
+        orderBy: { startAt: sortOrder },
         skip,
         take: lim,
       }),
@@ -535,12 +538,7 @@ export async function adminGetAppointmentDetails(req: Request, res: Response) {
       where: { id },
       include: {
         patient: {
-          include: {
-            files: true,
-            recalls: {
-              include: { entries: true },
-            },
-          },
+          // ❌ REMOVED files and recalls from here - will fetch separately by appointmentId
         },
         slot: true,
         doctor: {
@@ -555,6 +553,42 @@ export async function adminGetAppointmentDetails(req: Request, res: Response) {
         doctorNotes: true, // Include doctor notes if they exist
       },
     });
+
+    // ✅ Fetch appointment-scoped recalls separately
+    const appointmentRecalls = await prisma.recall.findMany({
+      where: {
+        appointmentId: id, // ✅ Filter by appointmentId
+        isArchived: false,
+      },
+      include: {
+        entries: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // ✅ Fetch appointment-scoped files separately (not all patient files)
+    // NOTE: Using raw SQL query as workaround until Prisma client is regenerated with File.appointmentId support.
+    // TODO: After running `npx prisma generate`, replace with: prisma.file.findMany({ where: { appointmentId: id, isArchived: false } })
+    const appointmentFiles = await prisma.$queryRaw<Array<{
+      id: string;
+      url: string;
+      fileName: string;
+      mimeType: string;
+      createdAt: Date;
+      provider: string;
+      sizeInBytes: number;
+      updatedAt: Date;
+      patientId: string | null;
+      appointmentId: string | null;
+      publicId: string;
+      archivedAt: Date | null;
+      isArchived: boolean;
+    }>>`
+      SELECT * FROM "File"
+      WHERE "appointmentId"::text = ${id}::text
+        AND "isArchived" = false
+      ORDER BY "createdAt" ASC
+    `;
 
     if (!appt) {
       // console.log("[ADMIN] Appointment not found:", id);
@@ -581,7 +615,18 @@ export async function adminGetAppointmentDetails(req: Request, res: Response) {
     }
 
     // console.log("[ADMIN] Appointment found successfully");
-    return res.json({ success: true, appointment: appt });
+    // ✅ Attach appointment-scoped recalls and files to response
+    return res.json({
+      success: true,
+      appointment: {
+        ...appt,
+        patient: {
+          ...appt.patient,
+          recalls: appointmentRecalls, // ✅ Only appointment-specific recalls
+        },
+        files: appointmentFiles, // ✅ Only appointment-specific files (at appointment level)
+      },
+    });
   } catch (err: any) {
     if (process.env.NODE_ENV !== "production") {
       console.error("[ADMIN] Get Appointment Details Error:", err);

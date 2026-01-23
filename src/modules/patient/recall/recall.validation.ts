@@ -20,7 +20,7 @@ export const createRecallSchema = z.object({
   patientId: z.string().uuid(),
   notes: z.string().optional(),
   entries: z.array(recallEntrySchema).min(1),
-  appointmentId: z.string().uuid().optional(),
+  appointmentId: z.string().uuid(), // ✅ Required - removed .optional()
 });
 
 export type CreateRecallInput = z.infer<typeof createRecallSchema>;

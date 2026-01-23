@@ -108,3 +108,46 @@ export async function getRecallHandler(req: Request, res: Response) {
     return res.status(400).json({ success: false, message: err.message });
   }
 }
+
+export async function getRecallByAppointmentHandler(
+  req: Request,
+  res: Response
+) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { appointmentId } = req.params;
+
+    // Verify appointment belongs to user
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: appointmentId,
+        userId: req.user.id,
+      },
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found or unauthorized",
+      });
+    }
+
+    // Fetch recall for this appointment
+    const recall = await prisma.recall.findFirst({
+      where: {
+        appointmentId,
+        isArchived: false,
+      },
+      include: {
+        entries: true,
+      },
+    });
+
+    return res.json({ success: true, data: recall });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+}

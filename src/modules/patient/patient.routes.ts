@@ -12,6 +12,7 @@ import {
   createRecallHandler,
   deleteRecallEntryHandler,
   getRecallHandler,
+  getRecallByAppointmentHandler,
 } from "./recall/recall.controller";
 
 const patientRoutes = Router();
@@ -92,6 +93,13 @@ patientRoutes.get(
   attachUser,
   requireAuth,
   getRecallHandler
+);
+
+patientRoutes.get(
+  "/recall/appointment/:appointmentId",
+  attachUser,
+  requireAuth,
+  getRecallByAppointmentHandler
 );
 
 export default patientRoutes;

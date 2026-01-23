@@ -55,20 +55,21 @@ export async function archiveDuplicatePendingAppointments(
   confirmedAppointment: {
     userId: string;
     patientId: string;
-    startAt: Date | string;
+    startAt?: Date | string; // Made optional - match by logical booking, not exact time
     planSlug: string;
   }
 ) {
   // Build comprehensive where clause for duplicate detection
-  // Match by: userId, patientId, startAt (slotTime), planSlug
+  // IMPROVED: Match by logical booking (userId + patientId + planSlug) without requiring exact startAt
+  // This ensures duplicates are found even if user changed slot between booking and payment
   const duplicateWhere: Prisma.AppointmentWhereInput = {
     userId: confirmedAppointment.userId,
     patientId: confirmedAppointment.patientId,
-    startAt: new Date(confirmedAppointment.startAt),
     planSlug: confirmedAppointment.planSlug,
     status: "PENDING",
-    id: { not: confirmedAppointmentId }, // Exclude the one we just confirmed
+    id: { not: confirmedAppointmentId }, // Exclude the one we just confirmed/created
     isArchived: false, // Only archive active appointments
+    // REMOVED: startAt match (too strict - user may have changed slot)
   };
 
   const duplicatePendingAppointments = await tx.appointment.findMany({
@@ -1106,6 +1107,15 @@ export async function verifyPaymentHandler(req: Request, res: Response) {
         }
       );
 
+      // Log error details
+      console.error("[PAYMENT ERROR]", {
+        requestId,
+        appointmentId: appointment.id,
+        transactionDuration,
+        errorCode: transactionError.code,
+        errorMessage: transactionError.message,
+      });
+
       // If appointment was confirmed but transaction failed partway through,
       // we need to handle this gracefully
       if (
@@ -2128,6 +2138,13 @@ export async function razorpayWebhookHandler(req: Request, res: Response) {
         // );
       } catch (transactionError: any) {
         console.error("[WEBHOOK] ❌ Transaction error:", transactionError);
+        console.error("[WEBHOOK ERROR DETAILS]", {
+          orderId,
+          paymentId,
+          eventType: "payment.captured",
+          eventId,
+          errorMessage: transactionError.message,
+        });
         // If event was stored but processing failed, we still return success
         // to prevent Razorpay from retrying (idempotency)
         if (eventId) {
