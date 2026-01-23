@@ -29,7 +29,7 @@ const app = express();
 
 // CRITICAL: Trust proxy for correct cookie parsing behind reverse proxy (PM2/nginx)
 // Without this, req.cookies may not be populated correctly in staging/production
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 app.use(cookieParser());
 
