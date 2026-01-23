@@ -38,7 +38,13 @@ function getAuthTokenCookieOptions() {
 
 export const logout = async (req: Request, res: Response) => {
   try {
-    res.clearCookie("auth_token", getAuthTokenCookieOptions());
+    const cookieOptions = getAuthTokenCookieOptions();
+    
+    // Clear all possible cookie names (role-specific and legacy)
+    // This ensures complete logout regardless of which cookie was used
+    res.clearCookie("auth_token_user", cookieOptions);
+    res.clearCookie("auth_token_admin", cookieOptions);
+    res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
 
     return res.json({ success: true, message: "Logged out successfully" });
   } catch (error) {

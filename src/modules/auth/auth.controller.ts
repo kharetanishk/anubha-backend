@@ -4,10 +4,19 @@ import { verifyToken } from "./utils/token";
 import prisma from "../../database/prismaclient";
 
 /**
+ * Helper function to get role-specific cookie name
+ * Differentiates between USER and ADMIN cookies to prevent collision
+ */
+function getAuthTokenCookieName(role: "USER" | "ADMIN"): string {
+  return role === "USER" ? "auth_token_user" : "auth_token_admin";
+}
+
+/**
  * Helper function to get consistent cookie options
  * Ensures all auth_token cookies are set with the same configuration
  * Environment-aware: production uses secure cookies with cross-site support,
  * staging uses staging domain, dev uses relaxed settings for localhost
+ * Includes cookie versioning for invalidation support
  */
 function getAuthTokenCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
@@ -78,7 +87,16 @@ export class AuthController {
 
       const response = await authService.verifyRegisterOtp(name, phone, otp);
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie
+      const role = response.user?.role || "USER";
+      const cookieName = getAuthTokenCookieName(role);
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(200).json({
         success: true,
@@ -136,7 +154,16 @@ export class AuthController {
         });
       }
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie
+      const role = response.user?.role || response.role || "USER";
+      const cookieName = getAuthTokenCookieName(role);
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(200).json({
         success: true,
@@ -332,7 +359,15 @@ export class AuthController {
         password
       );
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie (signup always creates USER)
+      const cookieName = getAuthTokenCookieName("USER");
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(201).json({
         success: true,
@@ -377,7 +412,16 @@ export class AuthController {
         password
       );
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie
+      const role = response.user?.role || "USER";
+      const cookieName = getAuthTokenCookieName(role);
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(200).json({
         success: true,
@@ -408,7 +452,16 @@ export class AuthController {
 
       const response = await authService.googleAuth(email, name, googleId);
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie
+      const role = response.user?.role || "USER";
+      const cookieName = getAuthTokenCookieName(role);
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(200).json({
         success: true,
@@ -537,7 +590,15 @@ export class AuthController {
         otp
       );
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie (verifyLinkPhoneEmailOtp always returns USER)
+      const cookieName = getAuthTokenCookieName("USER");
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(200).json({
         success: true,
@@ -600,7 +661,15 @@ export class AuthController {
 
       const response = await authService.verifyAddEmailOtp(userId, email, otp);
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie (verifyAddEmailOtp always returns USER)
+      const cookieName = getAuthTokenCookieName("USER");
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(200).json({
         success: true,
@@ -715,7 +784,16 @@ export class AuthController {
         password,
         otp
       );
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie (signupVerify always creates USER)
+      const cookieName = getAuthTokenCookieName("USER");
+      res.cookie(cookieName, response.token, cookieOptions);
 
       return res.status(201).json({
         success: true,
@@ -768,7 +846,17 @@ export class AuthController {
         });
       }
 
-      res.cookie("auth_token", response.token, getAuthTokenCookieOptions());
+      // Clear old cookies (both user and admin) to prevent collision
+      const cookieOptions = getAuthTokenCookieOptions();
+      res.clearCookie("auth_token_user", cookieOptions);
+      res.clearCookie("auth_token_admin", cookieOptions);
+      res.clearCookie("auth_token", cookieOptions); // Legacy cookie name
+
+      // Set role-specific cookie
+      const role = (response as any).user?.role || (response as any).role || "USER";
+      const cookieName = getAuthTokenCookieName(role);
+      res.cookie(cookieName, response.token, cookieOptions);
+
       return res.status(200).json({
         success: true,
         message: response.message,

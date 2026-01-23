@@ -750,22 +750,45 @@ export class AuthService {
   /* ---------------- GET ME ---------------- */
   async getMe(ownerId: string, role: "USER" | "ADMIN") {
     // console.log("[AUTH SERVICE] getMe called with:", { ownerId, role });
+    
+    // Try the expected role first
     if (role === "USER") {
       const user = await prisma.user.findUnique({
         where: { id: ownerId },
         select: { id: true, name: true, phone: true, email: true },
       });
 
-      if (!user) {
-        console.error("[AUTH SERVICE] User not found:", ownerId);
-        throw new AppError("User not found", 404);
+      if (user) {
+        return { ...user, role: "USER" };
       }
 
-      // console.log("[AUTH SERVICE] User found:", {
-      //   id: user.id,
-      //   name: user.name,
-      // });
-      return { ...user, role: "USER" };
+      // Role fallback: If user not found, try admin (handles wrong cookie scenarios)
+      console.warn("[AUTH SERVICE] User not found, trying admin fallback:", {
+        ownerId,
+        expectedRole: role,
+        timestamp: new Date().toISOString(),
+      });
+
+      const admin = await prisma.admin.findUnique({
+        where: { id: ownerId },
+        select: { id: true, name: true, phone: true, email: true },
+      });
+
+      if (admin) {
+        console.warn("[AUTH SERVICE] Role mismatch corrected: token had USER role but ID belongs to ADMIN:", {
+          ownerId,
+          correctedRole: "ADMIN",
+        });
+        return { ...admin, role: "ADMIN" };
+      }
+
+      // Neither found - log detailed error
+      console.error("[AUTH SERVICE] User not found in either table:", {
+        ownerId,
+        expectedRole: role,
+        timestamp: new Date().toISOString(),
+      });
+      throw new AppError("User not found", 404);
     }
 
     if (role === "ADMIN") {
@@ -774,16 +797,37 @@ export class AuthService {
         select: { id: true, name: true, phone: true, email: true },
       });
 
-      if (!admin) {
-        console.error("[AUTH SERVICE] Admin not found:", ownerId);
-        throw new AppError("Admin not found", 404);
+      if (admin) {
+        return { ...admin, role: "ADMIN" };
       }
 
-      // console.log("[AUTH SERVICE] Admin found:", {
-      //   id: admin.id,
-      //   name: admin.name,
-      // });
-      return { ...admin, role: "ADMIN" };
+      // Role fallback: If admin not found, try user (handles wrong cookie scenarios)
+      console.warn("[AUTH SERVICE] Admin not found, trying user fallback:", {
+        ownerId,
+        expectedRole: role,
+        timestamp: new Date().toISOString(),
+      });
+
+      const user = await prisma.user.findUnique({
+        where: { id: ownerId },
+        select: { id: true, name: true, phone: true, email: true },
+      });
+
+      if (user) {
+        console.warn("[AUTH SERVICE] Role mismatch corrected: token had ADMIN role but ID belongs to USER:", {
+          ownerId,
+          correctedRole: "USER",
+        });
+        return { ...user, role: "USER" };
+      }
+
+      // Neither found - log detailed error
+      console.error("[AUTH SERVICE] Admin not found in either table:", {
+        ownerId,
+        expectedRole: role,
+        timestamp: new Date().toISOString(),
+      });
+      throw new AppError("Admin not found", 404);
     }
 
     console.error("[AUTH SERVICE] Invalid role:", role);

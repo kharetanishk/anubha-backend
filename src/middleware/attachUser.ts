@@ -14,8 +14,11 @@ export async function attachUser(
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.substring(7);
     } else {
-      // Fallback to cookie
-      token = req.cookies.auth_token;
+      // Check role-specific cookies first (new architecture)
+      // Then fallback to legacy cookie name for backward compatibility
+      token = req.cookies.auth_token_user || 
+              req.cookies.auth_token_admin || 
+              req.cookies.auth_token; // Legacy cookie name
     }
 
     if (!token) {
