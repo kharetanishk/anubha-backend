@@ -18,14 +18,33 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.SERVER_HOST_ANUBHA_BACKEND }} >> ~/.ssh/known_hosts
+
+          cat <<EOF >> ~/.ssh/config
+          Host *
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+            IdentityFile ~/.ssh/id_ed25519
+          EOF
 
       - name: Deploy to Staging Server
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST_ANUBHA_BACKEND }} << 'EOF'
+            set -e
+
             cd /var/www/backend/anubha-backend-staging
-            git pull origin develop
+
+            # 🔥 FORCE SERVER STATE = GITHUB DEVELOP
+            git fetch origin
+            git checkout develop
+            git reset --hard origin/develop
+            git clean -fd
+
+            # 📦 INSTALL & BUILD
             npm install
             npm run build
-            pm2 restart anubha-backend-staging || pm2 start npm --name "anubha-backend-staging" -- start
+
+            # 🚀 RESTART BACKEND
+            pm2 restart anubha-backend-staging || \
+            pm2 start npm --name "anubha-backend-staging" -- start
           EOF
+
