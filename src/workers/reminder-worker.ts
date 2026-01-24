@@ -11,7 +11,7 @@ import {
   formatDateForTemplate,
   formatTimeForTemplate,
 } from "../services/whatsapp.service";
-import { sendReminderEmail } from "../services/email/appointment-email.service";
+import { sendReminderEmail, ADMIN_EMAIL } from "../services/email/appointment-email.service";
 import { getSingleAdmin } from "../modules/slots/slots.services";
 
 const globalForWorker = globalThis as unknown as {
@@ -248,7 +248,8 @@ async function processReminderJob(job: {
       const admin = await getSingleAdmin();
       const adminPhone = admin.phone || "919713885582";
       const adminName = admin.name || "Admin";
-      const adminEmail = admin.email;
+      // Use centralized hardcoded admin email - DO NOT use admin.email from database
+      const adminEmail = ADMIN_EMAIL;
 
       // Send WhatsApp reminder to admin
       try {
@@ -279,33 +280,32 @@ async function processReminderJob(job: {
       }
 
       // Send Email reminder to admin (non-blocking)
-      if (adminEmail) {
-        try {
-          const adminEmailResult = await sendReminderEmail({
-            name: adminName,
-            email: adminEmail,
-            slotStartTime: slotStartTimeDate,
-            slotEndTime: slotEndTimeDate,
-          });
+      // Always send - adminEmail is now guaranteed (hardcoded)
+      try {
+        const adminEmailResult = await sendReminderEmail({
+          name: adminName,
+          email: adminEmail,
+          slotStartTime: slotStartTimeDate,
+          slotEndTime: slotEndTimeDate,
+        });
 
-          if (adminEmailResult.success) {
-            if (process.env.NODE_ENV === "development") {
-              console.log(
-                `[REMINDER WORKER] ✅ Admin email reminder sent: ${appointmentId}`
-              );
-            }
-          } else {
-            console.error(
-              `[REMINDER WORKER] ❌ Admin email reminder failed: ${appointmentId}`,
-              adminEmailResult.error
+        if (adminEmailResult.success) {
+          if (process.env.NODE_ENV === "development") {
+            console.log(
+              `[REMINDER WORKER] ✅ Admin email reminder sent: ${appointmentId}`
             );
           }
-        } catch (error: any) {
+        } else {
           console.error(
-            `[REMINDER WORKER] ❌ Error sending admin email reminder: ${appointmentId}`,
-            error.message
+            `[REMINDER WORKER] ❌ Admin email reminder failed: ${appointmentId}`,
+            adminEmailResult.error
           );
         }
+      } catch (error: any) {
+        console.error(
+          `[REMINDER WORKER] ❌ Error sending admin email reminder: ${appointmentId}`,
+          error.message
+        );
       }
     } catch (error: any) {
       console.error(

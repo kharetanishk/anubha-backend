@@ -2,7 +2,16 @@ import { resend, getFromEmail } from "../../utils/resend";
 import { formatInTimeZone } from "date-fns-tz";
 
 const BUSINESS_TIMEZONE = "Asia/Kolkata";
-const DOCTOR_EMAIL = "anubhasnutritionclinic@gmail.com";
+
+/**
+ * Centralized admin/doctor email address
+ * Single source of truth for all admin email recipients
+ * DO NOT fetch from database - this is the authoritative email address
+ */
+export const ADMIN_EMAIL = "anubhasnutritionclinic@gmail.com";
+
+// Legacy constant name for backward compatibility
+const DOCTOR_EMAIL = ADMIN_EMAIL;
 
 /**
  * Format date to readable string with day of week
