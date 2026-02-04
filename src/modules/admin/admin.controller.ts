@@ -3,7 +3,7 @@ import { AppointmentStatus } from "@prisma/client";
 import { AppointmentMode } from "@prisma/client";
 import { Request, Response } from "express";
 import {
-  sendPatientConfirmationMessage,
+  sendBookingConfirmationMessage,
   sendDoctorNotificationMessage,
   formatDateForTemplate,
   formatTimeForTemplate,
@@ -1512,7 +1512,7 @@ export async function saveDoctorNotes(req: Request, res: Response) {
 /**
  * Send WhatsApp notifications when admin manually confirms an appointment
  */
-async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
+export async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
   try {
     if (process.env.NODE_ENV === "development") {
       console.log("==========================================");
@@ -1521,19 +1521,32 @@ async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
       console.log("  Appointment Status: CONFIRMED (by admin)");
       console.log("==========================================");
     }
-    // Get patient phone number
+    // Get patient phone number and slot times
     const patientPhone = appointment.patient?.phone;
     const patientName = appointment.patient?.name || "Patient";
+    const slotStartTime = appointment.slot?.startAt || appointment.startAt;
+    const slotEndTime = appointment.slot?.endAt || appointment.endAt;
 
     if (!patientPhone) {
       // console.warn(
       // "[ADMIN WHATSAPP] ⚠️ Patient phone not found, skipping patient notification"
       // );
+    } else if (!slotStartTime) {
+      console.error(
+        "[ADMIN WHATSAPP] ❌ Slot time not found, cannot send patient notification"
+      );
     } else {
-      // console.log("[ADMIN WHATSAPP] Sending patient confirmation message...");
-      // console.log("  Patient Name:", patientName);
-      // console.log("  Patient Phone:", patientPhone);
-      const patientResult = await sendPatientConfirmationMessage(patientPhone);
+      // Convert to Date objects for the booking confirmation message
+      const slotTimeDate = new Date(slotStartTime);
+      const slotEndTimeDate = slotEndTime ? new Date(slotEndTime) : undefined;
+
+      // Send booking confirmation message using the same template as user bookings
+      const patientResult = await sendBookingConfirmationMessage(
+        patientPhone,
+        slotTimeDate,
+        patientName,
+        slotEndTimeDate
+      );
 
       if (patientResult.success) {
         if (process.env.NODE_ENV === "development") {
@@ -1543,7 +1556,7 @@ async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
           );
           console.log("  Patient Phone:", patientPhone);
           console.log("  Patient Name:", patientName);
-          console.log("  Template: patient");
+          console.log("  Template: bookingconfirm");
           console.log("==========================================");
         }
       } else {
@@ -1558,8 +1571,6 @@ async function sendWhatsAppNotificationsForAdminConfirmation(appointment: any) {
     // Prepare data for doctor notification
     // Always sends to fixed doctor/admin number: 919713885582 (single doctor application)
     const planName = appointment.planName || "Consultation Plan";
-    const slotStartTime = appointment.slot?.startAt || appointment.startAt;
-    const slotEndTime = appointment.slot?.endAt || appointment.endAt;
 
     // Format appointment date and slot time
     const appointmentDate = formatDateForTemplate(slotStartTime);

@@ -4,6 +4,8 @@ import { getSingleDoctorId } from "../appointment/appointment.service";
 import { AppointmentStatus, AppointmentMode } from "@prisma/client";
 import { validatePlanDetails } from "../appointment/plan-validation";
 import { AppError } from "../../util/AppError";
+import { sendWhatsAppNotificationsForAdminConfirmation } from "./admin.controller";
+import { sendAppointmentConfirmationNotifications } from "../../services/notification/appointment-notification.service";
 
 /**
  * Admin Appointment Controller
@@ -261,6 +263,35 @@ export async function createAppointmentByAdmin(req: Request, res: Response) {
       },
     });
 
+    // Calculate reminderTime (1 hour before appointment start) and store it
+    // This enables reminder scheduling via cron job
+    try {
+      const reminderTime = new Date(
+        appointmentStartAt.getTime() - 60 * 60 * 1000
+      ); // -1 hour
+
+      // Update appointment with reminderTime
+      // If appointment is less than 1 hour away, reminderTime will be in past
+      // This is acceptable - confirmation will still be sent, but reminder won't be scheduled
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          reminderTime: reminderTime,
+          reminderSent: false, // Will be set to true after reminder is sent by cron/worker
+        },
+      });
+    } catch (reminderTimeError: any) {
+      // Log error but don't fail appointment creation
+      console.error(
+        "[ADMIN APPOINTMENT] Failed to set reminderTime (non-critical):",
+        {
+          appointmentId: appointment.id,
+          error: reminderTimeError?.message || reminderTimeError,
+        }
+      );
+      // Continue - appointment is created, reminderTime is optional
+    }
+
     // Create recall if recallEntries are provided
     let recall = null;
     if (
@@ -289,6 +320,84 @@ export async function createAppointmentByAdmin(req: Request, res: Response) {
       });
     }
 
+    // Send notifications asynchronously (non-blocking)
+    // This ensures appointment creation response is returned immediately
+    // Messaging happens in background after response is sent
+    setImmediate(async () => {
+      try {
+        // Fetch appointment with patient and slot data for messaging
+        const appointmentForMessaging = await prisma.appointment.findUnique({
+          where: { id: appointment.id },
+          include: {
+            patient: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+                email: true,
+              },
+            },
+            slot: {
+              select: {
+                id: true,
+                startAt: true,
+                endAt: true,
+                mode: true,
+              },
+            },
+          },
+        });
+
+        if (!appointmentForMessaging) {
+          console.error(
+            "[ADMIN APPOINTMENT] Appointment not found for messaging:",
+            appointment.id
+          );
+          return;
+        }
+
+        // Send WhatsApp notifications using admin-specific function
+        // This function handles patient and doctor WhatsApp notifications
+        // Note: This function can throw errors, so it's wrapped in try-catch
+        await sendWhatsAppNotificationsForAdminConfirmation(
+          appointmentForMessaging
+        );
+
+        // Send email notifications
+        await sendAppointmentConfirmationNotifications({
+          appointment: {
+            id: appointmentForMessaging.id,
+            planName: appointmentForMessaging.planName,
+            patient: {
+              name: appointmentForMessaging.patient?.name,
+              phone: appointmentForMessaging.patient?.phone,
+              email: appointmentForMessaging.patient?.email,
+            },
+            slot: appointmentForMessaging.slot
+              ? {
+                  startAt: appointmentForMessaging.slot.startAt,
+                  endAt: appointmentForMessaging.slot.endAt,
+                }
+              : undefined,
+            startAt: appointmentForMessaging.startAt,
+            endAt: appointmentForMessaging.endAt,
+          },
+        });
+      } catch (notificationError: any) {
+        // Log error but don't throw - appointment creation succeeded
+        console.error(
+          "[ADMIN APPOINTMENT] Notification failed (non-blocking):",
+          {
+            appointmentId: appointment.id,
+            error: notificationError?.message || notificationError,
+            stack: notificationError?.stack,
+          }
+        );
+        // Don't throw - appointment creation succeeded
+      }
+    });
+
+    // Return response immediately (messaging happens asynchronously)
     return res.status(201).json({
       success: true,
       message: "Appointment created successfully",
